@@ -1,8 +1,86 @@
 import { Router } from "express";
 import fs from "fs";
 import path from "path";
+import crypto from "crypto";
 
 const router = Router();
+
+// ── OAuth PKCE state ─────────────────────────────────────────────────────────
+const pendingOAuthFlows = new Map<string, { codeVerifier: string; redirectUri: string; createdAt: number }>();
+
+const JB_AUTH_URL = "https://account.jetbrains.com/oauth/login";
+const JB_TOKEN_URL = "https://oauth.account.jetbrains.com/oauth2/token";
+const JB_API_BASE = "https://api.jetbrains.ai";
+const OAUTH_CLIENT_ID = "ide";
+const OAUTH_REDIRECT_URI = "http://localhost:3000";
+
+function generatePKCE() {
+  const codeVerifier = crypto.randomBytes(32).toString("base64url");
+  const codeChallenge = crypto.createHash("sha256").update(codeVerifier).digest("base64url");
+  return { codeVerifier, codeChallenge };
+}
+
+function decodeJwtPayload(token: string): Record<string, unknown> {
+  const parts = token.split(".");
+  if (parts.length !== 3) throw new Error("Invalid JWT");
+  return JSON.parse(Buffer.from(parts[1], "base64url").toString("utf-8"));
+}
+
+async function refreshIdToken(refreshToken: string): Promise<{ id_token: string; refresh_token?: string }> {
+  const res = await fetch(JB_TOKEN_URL, {
+    method: "POST",
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    body: new URLSearchParams({
+      grant_type: "refresh_token",
+      refresh_token: refreshToken,
+      client_id: OAUTH_CLIENT_ID,
+    }),
+    signal: AbortSignal.timeout(15000),
+  });
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(`JetBrains token refresh failed (${res.status}): ${text}`);
+  }
+  return res.json() as Promise<{ id_token: string; refresh_token?: string }>;
+}
+
+// Background token refresh loop — refresh id_token for OAuth accounts every 10 min
+let _refreshLoopStarted = false;
+function ensureRefreshLoop() {
+  if (_refreshLoopStarted) return;
+  _refreshLoopStarted = true;
+  setInterval(async () => {
+    try {
+      const accounts = readJson("jetbrainsai.json") as unknown[];
+      if (!Array.isArray(accounts)) return;
+      let changed = false;
+      const now = Date.now();
+      for (const a of accounts) {
+        const acc = a as Record<string, unknown>;
+        if (!acc.refresh_token || typeof acc.refresh_token !== "string") continue;
+        const expiresAt = typeof acc.id_token_expires_at === "number" ? acc.id_token_expires_at : 0;
+        if (expiresAt - now > 5 * 60 * 1000) continue; // still valid for >5 min
+        try {
+          const tokens = await refreshIdToken(acc.refresh_token);
+          acc.authorization = tokens.id_token;
+          if (tokens.refresh_token) acc.refresh_token = tokens.refresh_token;
+          const payload = decodeJwtPayload(tokens.id_token);
+          acc.id_token_expires_at = ((payload.exp as number) || 0) * 1000;
+          changed = true;
+          console.log(`[oauth] refreshed id_token for account: ${acc.email ?? acc.licenseId}`);
+        } catch (e) {
+          console.error(`[oauth] refresh failed for ${acc.email ?? acc.licenseId}:`, e);
+        }
+      }
+      if (changed) {
+        writeJson("jetbrainsai.json", accounts);
+        await reloadProxyConfig();
+      }
+    } catch (e) {
+      console.error("[oauth] refresh loop error:", e);
+    }
+  }, 10 * 60 * 1000); // check every 10 minutes
+}
 
 const DATA_DIR = process.env["DATA_DIR"] || path.join(process.cwd(), "..", "..", "python", "proxy");
 const LOG_FILE = process.env["LOG_FILE"] || path.join(process.cwd(), "..", "..", "python", "proxy.log");
@@ -315,5 +393,154 @@ router.post("/admin/test-jwt-refresh", async (req, res) => {
     res.json({ status: 0, error: e instanceof Error ? e.message : String(e), ok: false });
   }
 });
+
+// ── OAuth routes ─────────────────────────────────────────────────────────────
+
+// GET /api/admin/oauth/start — generate PKCE codes and return JetBrains OAuth URL
+router.get("/admin/oauth/start", (_req, res) => {
+  // Clean up expired flows
+  const now = Date.now();
+  for (const [key, val] of pendingOAuthFlows) {
+    if (now - val.createdAt > 10 * 60 * 1000) pendingOAuthFlows.delete(key);
+  }
+
+  const { codeVerifier, codeChallenge } = generatePKCE();
+  const state = crypto.randomBytes(16).toString("hex");
+  pendingOAuthFlows.set(state, { codeVerifier, redirectUri: OAUTH_REDIRECT_URI, createdAt: now });
+
+  const params = new URLSearchParams({
+    client_id: OAUTH_CLIENT_ID,
+    scope: "openid offline_access r_ide_auth",
+    code_challenge: codeChallenge,
+    code_challenge_method: "S256",
+    redirect_uri: OAUTH_REDIRECT_URI,
+    state,
+    response_type: "code",
+  });
+
+  res.json({ url: `${JB_AUTH_URL}?${params}`, state, redirectUri: OAUTH_REDIRECT_URI });
+  ensureRefreshLoop();
+});
+
+// POST /api/admin/oauth/callback — exchange code from pasted callback URL
+router.post("/admin/oauth/callback", async (req, res) => {
+  const { callback_url, license_id } = req.body as { callback_url?: string; license_id?: string };
+  if (!callback_url) { res.status(400).json({ error: "callback_url is required" }); return; }
+  if (!license_id) { res.status(400).json({ error: "license_id is required" }); return; }
+
+  let code: string | null, state: string | null;
+  try {
+    const url = new URL(callback_url);
+    code = url.searchParams.get("code");
+    state = url.searchParams.get("state");
+  } catch {
+    res.status(400).json({ error: "Invalid callback_url — must be a full URL" });
+    return;
+  }
+
+  if (!code || !state) { res.status(400).json({ error: "callback_url is missing code or state parameters" }); return; }
+
+  const flow = pendingOAuthFlows.get(state);
+  if (!flow) { res.status(400).json({ error: "OAuth state not found or expired — please start a new OAuth flow" }); return; }
+  pendingOAuthFlows.delete(state);
+
+  // Exchange code for tokens
+  let tokens: { id_token: string; refresh_token: string };
+  try {
+    const tokenRes = await fetch(JB_TOKEN_URL, {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body: new URLSearchParams({
+        grant_type: "authorization_code",
+        code,
+        code_verifier: flow.codeVerifier,
+        client_id: OAUTH_CLIENT_ID,
+        redirect_uri: flow.redirectUri,
+      }),
+      signal: AbortSignal.timeout(15000),
+    });
+    if (!tokenRes.ok) {
+      const text = await tokenRes.text();
+      res.status(502).json({ error: `JetBrains token exchange failed (${tokenRes.status}): ${text}` });
+      return;
+    }
+    tokens = await tokenRes.json() as { id_token: string; refresh_token: string };
+  } catch (e) {
+    res.status(502).json({ error: `Network error during token exchange: ${(e as Error).message}` });
+    return;
+  }
+
+  // Decode email + expiry from id_token
+  let email = "unknown";
+  let idTokenExpiresAt = 0;
+  try {
+    const payload = decodeJwtPayload(tokens.id_token);
+    email = (payload.email ?? payload.preferred_username ?? "unknown") as string;
+    idTokenExpiresAt = ((payload.exp as number) || 0) * 1000;
+  } catch {}
+
+  // Register with JetBrains AI if needed (best-effort)
+  try {
+    await fetch(`${JB_API_BASE}/auth/jetbrains-jwt/user-info`, {
+      headers: { "Authorization": `Bearer ${tokens.id_token}`, "User-Agent": "ktor-client" },
+      signal: AbortSignal.timeout(8000),
+    });
+  } catch {}
+
+  // Save/update account in jetbrainsai.json
+  const accounts = (readJson("jetbrainsai.json") as unknown[] | null) ?? [];
+  const existingIdx = accounts.findIndex((a) => (a as Record<string, unknown>).email === email);
+  const newAccount: Record<string, unknown> = {
+    licenseId: license_id,
+    authorization: tokens.id_token,
+    refresh_token: tokens.refresh_token,
+    email,
+    id_token_expires_at: idTokenExpiresAt,
+    enabled: true,
+  };
+
+  if (existingIdx >= 0) {
+    accounts[existingIdx] = { ...(accounts[existingIdx] as Record<string, unknown>), ...newAccount };
+  } else {
+    accounts.push(newAccount);
+  }
+
+  writeJson("jetbrainsai.json", accounts);
+  await reloadProxyConfig();
+  ensureRefreshLoop();
+
+  res.json({ ok: true, email, licenseId: license_id, updated: existingIdx >= 0 });
+});
+
+// POST /api/admin/oauth/refresh-manual — manually force refresh of OAuth id_token for an account
+router.post("/admin/oauth/refresh-manual", async (req, res) => {
+  const { email, licenseId } = req.body as { email?: string; licenseId?: string };
+  const accounts = (readJson("jetbrainsai.json") as unknown[] | null) ?? [];
+  const acc = accounts.find((a) => {
+    const r = a as Record<string, unknown>;
+    return (email && r.email === email) || (licenseId && r.licenseId === licenseId);
+  }) as Record<string, unknown> | undefined;
+
+  if (!acc) { res.status(404).json({ error: "Account not found" }); return; }
+  if (!acc.refresh_token || typeof acc.refresh_token !== "string") {
+    res.status(400).json({ error: "Account does not have a refresh_token (not an OAuth account)" }); return;
+  }
+
+  try {
+    const tokens = await refreshIdToken(acc.refresh_token);
+    acc.authorization = tokens.id_token;
+    if (tokens.refresh_token) acc.refresh_token = tokens.refresh_token;
+    const payload = decodeJwtPayload(tokens.id_token);
+    acc.id_token_expires_at = ((payload.exp as number) || 0) * 1000;
+    writeJson("jetbrainsai.json", accounts);
+    await reloadProxyConfig();
+    res.json({ ok: true, id_token_expires_at: acc.id_token_expires_at });
+  } catch (e) {
+    res.status(502).json({ error: (e as Error).message });
+  }
+});
+
+// Start OAuth refresh loop at module load time
+ensureRefreshLoop();
 
 export default router;

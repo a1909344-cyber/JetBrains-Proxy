@@ -9,7 +9,7 @@ import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter, DialogClose } from "@/components/ui/dialog";
 import { useToast } from "@/hooks/use-toast";
-import { Trash2, Edit, Plus, CheckCircle2, XCircle, Clock, Power, FlaskConical, Loader2, ChevronDown, ChevronUp, BarChart2, RotateCcw, Zap, BookOpen, Copy, Check } from "lucide-react";
+import { Trash2, Edit, Plus, CheckCircle2, XCircle, Clock, Power, FlaskConical, Loader2, ChevronDown, ChevronUp, BarChart2, RotateCcw, Zap, BookOpen, Copy, Check, LogIn, ExternalLink } from "lucide-react";
 import { JetbrainsAccount } from "@workspace/api-client-react/src/generated/api.schemas";
 import { Skeleton } from "@/components/ui/skeleton";
 
@@ -117,6 +117,54 @@ export default function Accounts() {
   const [importText, setImportText] = useState("");
   const [importMsg, setImportMsg] = useState<{ ok: boolean; text: string } | null>(null);
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
+
+  // OAuth flow state
+  const [oauthUrl, setOauthUrl] = useState<string | null>(null);
+  const [oauthCallbackUrl, setOauthCallbackUrl] = useState("");
+  const [oauthLicenseId, setOauthLicenseId] = useState("");
+  const [oauthLoading, setOauthLoading] = useState(false);
+  const [oauthMsg, setOauthMsg] = useState<{ ok: boolean; text: string } | null>(null);
+
+  const handleOauthStart = async () => {
+    setOauthLoading(true);
+    setOauthMsg(null);
+    setOauthUrl(null);
+    try {
+      const res = await fetch("/api/admin/oauth/start");
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Failed to get OAuth URL");
+      setOauthUrl(data.url);
+    } catch (e) {
+      setOauthMsg({ ok: false, text: (e as Error).message });
+    } finally {
+      setOauthLoading(false);
+    }
+  };
+
+  const handleOauthCallback = async () => {
+    if (!oauthCallbackUrl.trim()) { setOauthMsg({ ok: false, text: "请粘贴 JetBrains 授权回调 URL" }); return; }
+    if (!oauthLicenseId.trim()) { setOauthMsg({ ok: false, text: "请填写 License ID（在 account.jetbrains.com/licenses 查看）" }); return; }
+    setOauthLoading(true);
+    setOauthMsg(null);
+    try {
+      const res = await fetch("/api/admin/oauth/callback", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ callback_url: oauthCallbackUrl.trim(), license_id: oauthLicenseId.trim() }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "OAuth callback failed");
+      setOauthMsg({ ok: true, text: `添加成功！邮箱: ${data.email}，Token 将自动刷新。` });
+      setOauthUrl(null);
+      setOauthCallbackUrl("");
+      setOauthLicenseId("");
+      queryClient.invalidateQueries({ queryKey: getGetJetbrainsAccountsQueryKey() });
+    } catch (e) {
+      setOauthMsg({ ok: false, text: (e as Error).message });
+    } finally {
+      setOauthLoading(false);
+    }
+  };
 
   const copyToClipboard = (text: string, key: string) => {
     navigator.clipboard.writeText(text).then(() => {
@@ -311,6 +359,7 @@ export default function Accounts() {
   };
 
   const getMode = (acc: ExtendedAccount) => {
+    if ((acc as Record<string, unknown>).refresh_token) return "OAuth";
     if (acc.jwt && !acc.licenseId) return "JWT Only";
     if (acc.licenseId && acc.authorization) return "License + Auth";
     if (acc.jwt && acc.licenseId) return "JWT + License";
@@ -348,7 +397,7 @@ export default function Accounts() {
 
         <Dialog open={isAddOpen} onOpenChange={(open) => {
           setIsAddOpen(open);
-          if (!open) { setEditingIndex(null); resetForm(); setImportText(""); setImportMsg(null); setShowGuide(false); }
+          if (!open) { setEditingIndex(null); resetForm(); setImportText(""); setImportMsg(null); setShowGuide(false); setOauthUrl(null); setOauthCallbackUrl(""); setOauthLicenseId(""); setOauthMsg(null); }
         }}>
           <DialogTrigger asChild>
             <Button data-testid="btn-add-account">
@@ -361,6 +410,117 @@ export default function Accounts() {
               <DialogTitle>{editingIndex !== null ? 'Edit Account' : 'Add Account'}</DialogTitle>
             </DialogHeader>
             <form onSubmit={handleSave} className="space-y-4 py-2">
+
+              {/* ── OAuth Login (only show for new accounts) ── */}
+              {editingIndex === null && (
+                <div className="rounded-md border-2 border-primary/50 bg-primary/5 p-4 space-y-3">
+                  <div className="flex items-center gap-2">
+                    <LogIn className="h-4 w-4 text-primary" />
+                    <span className="text-xs font-semibold text-primary uppercase tracking-wider">JetBrains OAuth 登录</span>
+                    <span className="text-xs bg-primary/20 text-primary px-1.5 py-0.5 rounded font-medium">推荐 · Token 自动刷新</span>
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    用你的 JetBrains 账号一键授权，获取 <code className="bg-muted px-1 rounded">refresh_token</code>，系统每 50 分钟自动更新认证 Token，无需手动维护。
+                  </p>
+
+                  {/* Step 1: Get OAuth URL */}
+                  <div className="space-y-2">
+                    <div className="flex items-center gap-2 text-xs font-medium text-foreground">
+                      <span className="w-5 h-5 rounded-full bg-primary text-primary-foreground flex items-center justify-center text-[10px] font-bold">1</span>
+                      点击按钮前往 JetBrains 授权页面
+                    </div>
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <Button
+                        type="button"
+                        size="sm"
+                        onClick={handleOauthStart}
+                        disabled={oauthLoading}
+                        variant="outline"
+                        className="border-primary/50 text-primary hover:bg-primary/10"
+                      >
+                        {oauthLoading ? <Loader2 className="mr-1.5 h-3 w-3 animate-spin" /> : <LogIn className="mr-1.5 h-3 w-3" />}
+                        获取 JetBrains 授权链接
+                      </Button>
+                      {oauthUrl && (
+                        <a
+                          href={oauthUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="inline-flex items-center gap-1 text-xs text-primary hover:underline font-medium"
+                        >
+                          <ExternalLink className="h-3 w-3" /> 点击此链接前往授权
+                        </a>
+                      )}
+                    </div>
+                    {oauthUrl && (
+                      <p className="text-xs text-muted-foreground bg-muted/40 rounded px-2 py-1.5 border border-border">
+                        授权完成后，JetBrains 会将浏览器跳转到 <code className="bg-muted px-0.5 rounded">http://localhost:3000/?code=...&state=...</code>（本地直接跳转；远程部署时页面会打不开，复制地址栏 URL 即可）
+                      </p>
+                    )}
+                  </div>
+
+                  {/* Step 2: Paste callback URL */}
+                  {oauthUrl && (
+                    <div className="space-y-2">
+                      <div className="flex items-center gap-2 text-xs font-medium text-foreground">
+                        <span className="w-5 h-5 rounded-full bg-primary text-primary-foreground flex items-center justify-center text-[10px] font-bold">2</span>
+                        复制浏览器地址栏 URL，粘贴到这里
+                      </div>
+                      <Input
+                        placeholder="http://localhost:3000/?code=abc123&state=xyz..."
+                        value={oauthCallbackUrl}
+                        onChange={e => { setOauthCallbackUrl(e.target.value); setOauthMsg(null); }}
+                        className="font-mono text-xs"
+                      />
+
+                      <div className="flex items-center gap-2 text-xs font-medium text-foreground mt-1">
+                        <span className="w-5 h-5 rounded-full bg-primary text-primary-foreground flex items-center justify-center text-[10px] font-bold">3</span>
+                        填写 License ID
+                        <a
+                          href="https://account.jetbrains.com/licenses"
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-primary hover:underline inline-flex items-center gap-0.5"
+                        >
+                          <ExternalLink className="h-2.5 w-2.5" /> account.jetbrains.com/licenses
+                        </a>
+                      </div>
+                      <Input
+                        placeholder="WDVWPRAT3B"
+                        value={oauthLicenseId}
+                        onChange={e => { setOauthLicenseId(e.target.value); setOauthMsg(null); }}
+                        className="font-mono"
+                      />
+
+                      <Button
+                        type="button"
+                        size="sm"
+                        onClick={handleOauthCallback}
+                        disabled={oauthLoading}
+                        className="mt-1"
+                      >
+                        {oauthLoading ? <Loader2 className="mr-1.5 h-3 w-3 animate-spin" /> : <CheckCircle2 className="mr-1.5 h-3 w-3" />}
+                        完成添加
+                      </Button>
+                    </div>
+                  )}
+
+                  {/* OAuth result message */}
+                  {oauthMsg && (
+                    <div className={`flex items-start gap-2 text-xs rounded px-2 py-1.5 border ${oauthMsg.ok ? "bg-primary/10 border-primary/30 text-primary" : "bg-destructive/10 border-destructive/30 text-destructive"}`}>
+                      {oauthMsg.ok ? <CheckCircle2 className="h-3.5 w-3.5 mt-0.5 shrink-0" /> : <XCircle className="h-3.5 w-3.5 mt-0.5 shrink-0" />}
+                      <span>{oauthMsg.text}</span>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              <div className="relative py-1">
+                <div className="absolute inset-0 flex items-center"><span className="w-full border-t border-muted-foreground/20" /></div>
+                <div className="relative flex justify-center text-xs uppercase">
+                  <span className="bg-background px-2 text-muted-foreground">或手动填写 / Manual</span>
+                </div>
+              </div>
 
               {/* ── Quick Import ── */}
               <div className="rounded-md border-2 border-amber-500/40 bg-amber-500/5 p-4 space-y-3">
@@ -692,7 +852,7 @@ find ~/.config/JetBrains -name "*.xml" 2>/dev/null | xargs grep -l "licenseId\\|
                   <div className="flex-1 min-w-0">
                     <CardTitle className="text-lg flex items-center gap-2 flex-wrap">
                       Account {i + 1}
-                      <span className="text-xs px-2 py-0.5 bg-secondary text-secondary-foreground rounded-full border border-secondary-border font-mono font-normal">
+                      <span className={`text-xs px-2 py-0.5 rounded-full border font-mono font-normal ${getMode(acc) === "OAuth" ? "bg-primary/15 text-primary border-primary/30" : "bg-secondary text-secondary-foreground border-secondary-border"}`}>
                         {getMode(acc)}
                       </span>
                       {!enabled && (
@@ -760,12 +920,24 @@ find ~/.config/JetBrains -name "*.xml" 2>/dev/null | xargs grep -l "licenseId\\|
                       <span className="font-mono">{acc.licenseId}</span>
                     </div>
                   )}
-                  {acc.authorization && (
+                  {(acc as Record<string, unknown>).email && (
+                    <div className="grid grid-cols-[120px_1fr] items-center gap-2">
+                      <span className="text-muted-foreground font-mono text-xs">Email:</span>
+                      <span className="text-xs text-primary font-medium">{String((acc as Record<string, unknown>).email)}</span>
+                    </div>
+                  )}
+                  {acc.authorization && getMode(acc) !== "OAuth" && (
                     <div className="grid grid-cols-[120px_1fr] items-center gap-2">
                       <span className="text-muted-foreground font-mono">Auth Token:</span>
                       <span className="font-mono text-xs truncate">
                         {acc.authorization.length > 16 ? acc.authorization.substring(0, 16) + "..." : acc.authorization}
                       </span>
+                    </div>
+                  )}
+                  {getMode(acc) === "OAuth" && (
+                    <div className="grid grid-cols-[120px_1fr] items-center gap-2">
+                      <span className="text-muted-foreground font-mono text-xs">Token:</span>
+                      <span className="text-xs text-primary/70">自动刷新中 · refresh_token 已保存</span>
                     </div>
                   )}
                   {acc.grazieAgent && (
