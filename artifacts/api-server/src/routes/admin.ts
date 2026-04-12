@@ -199,9 +199,24 @@ router.put("/admin/config/jetbrainsai", async (req, res) => {
     res.status(400).json({ error: "Expected a JSON array of accounts" });
     return;
   }
-  writeJson("jetbrainsai.json", req.body);
+
+  // Deduplicate: for accounts sharing the same licenseId (or email), keep the last occurrence
+  type Account = Record<string, unknown>;
+  const seen = new Map<string, number>(); // key → last index
+  const raw = req.body as Account[];
+  raw.forEach((acc, i) => {
+    const key = (acc.licenseId as string | undefined) || (acc.email as string | undefined);
+    if (key) seen.set(key, i);
+  });
+  const deduped = raw.filter((acc, i) => {
+    const key = (acc.licenseId as string | undefined) || (acc.email as string | undefined);
+    if (!key) return true; // no dedup key — always keep
+    return seen.get(key) === i; // only keep the last occurrence
+  });
+
+  writeJson("jetbrainsai.json", deduped);
   await reloadProxyConfig();
-  res.json({ success: true });
+  res.json({ success: true, total: deduped.length, removed: raw.length - deduped.length });
 });
 
 router.get("/admin/config/client-keys", (req, res) => {

@@ -82,7 +82,7 @@ function parseJsonSafe(s: string): Record<string, unknown> | null {
 export default function Accounts() {
   const queryClient = useQueryClient();
   const { toast } = useToast();
-  const { t } = useLang();
+  const { t, lang } = useLang();
 
   const { data: accounts, isLoading } = useGetJetbrainsAccounts();
   const putAccounts = usePutJetbrainsAccounts();
@@ -304,7 +304,22 @@ export default function Accounts() {
     if (editingIndex !== null) {
       newAccounts[editingIndex] = { ...newAccounts[editingIndex], ...accountToSave };
     } else {
-      newAccounts.push(accountToSave);
+      // Dedup: find existing account with the same licenseId or email
+      const dedupKey = (formData.licenseId || (accountToSave as any).email || "").trim();
+      const existingIdx = dedupKey
+        ? typedAccounts.findIndex(a =>
+            (a.licenseId && a.licenseId === dedupKey) ||
+            ((a as any).email && (a as any).email === dedupKey)
+          )
+        : -1;
+
+      if (existingIdx !== -1) {
+        // Merge into existing — update credentials, preserve other metadata
+        newAccounts[existingIdx] = { ...newAccounts[existingIdx], ...accountToSave };
+        toast({ title: lang === "en" ? "Account updated (duplicate merged)" : "账号已更新（重复账号已合并）" });
+      } else {
+        newAccounts.push(accountToSave);
+      }
     }
 
     putAccounts.mutate({ data: newAccounts }, {
