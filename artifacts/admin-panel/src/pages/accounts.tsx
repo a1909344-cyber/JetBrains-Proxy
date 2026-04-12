@@ -156,11 +156,12 @@ export default function Accounts() {
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "OAuth callback failed");
-      setOauthMsg({ ok: true, text: t("add_oauth_success", { email: data.email }) });
+      queryClient.invalidateQueries({ queryKey: getGetJetbrainsAccountsQueryKey() });
+      toast({ title: t("acc_saved"), description: t("add_oauth_success", { email: data.email }) });
       setOauthUrl(null);
       setOauthCallbackUrl("");
       setOauthLicenseId("");
-      queryClient.invalidateQueries({ queryKey: getGetJetbrainsAccountsQueryKey() });
+      setIsAddOpen(false);
     } catch (e) {
       setOauthMsg({ ok: false, text: (e as Error).message });
     } finally {
@@ -411,9 +412,9 @@ export default function Accounts() {
             <DialogHeader>
               <DialogTitle>{editingIndex !== null ? t("acc_edit") : t("acc_add")}</DialogTitle>
             </DialogHeader>
-            <form onSubmit={handleSave} className="space-y-4 py-2">
+            <div className="space-y-4 py-2">
 
-              {/* ── OAuth Login (only show for new accounts) ── */}
+              {/* ── OAuth Login (only show for new accounts) — OUTSIDE <form> so Enter key can't submit ── */}
               {editingIndex === null && (
                 <div className="rounded-md border-2 border-primary/50 bg-primary/5 p-4 space-y-3">
                   <div className="flex items-center gap-2">
@@ -515,12 +516,17 @@ export default function Accounts() {
                 </div>
               )}
 
-              <div className="relative py-1">
-                <div className="absolute inset-0 flex items-center"><span className="w-full border-t border-muted-foreground/20" /></div>
-                <div className="relative flex justify-center text-xs uppercase">
-                  <span className="bg-background px-2 text-muted-foreground">{t("add_or_manual")}</span>
+              {editingIndex === null && (
+                <div className="relative py-1">
+                  <div className="absolute inset-0 flex items-center"><span className="w-full border-t border-muted-foreground/20" /></div>
+                  <div className="relative flex justify-center text-xs uppercase">
+                    <span className="bg-background px-2 text-muted-foreground">{t("add_or_manual")}</span>
+                  </div>
                 </div>
-              </div>
+              )}
+
+              {/* ── Manual entry form ── */}
+              <form onSubmit={handleSave} className="space-y-4">
 
               {/* ── Quick Import ── */}
               <div className="rounded-md border-2 border-amber-500/40 bg-amber-500/5 p-4 space-y-3">
@@ -815,7 +821,8 @@ find ~/.config/JetBrains -name "*.xml" 2>/dev/null | xargs grep -l "licenseId\\|
                   {putAccounts.isPending ? t("acc_saving") : t("acc_save")}
                 </Button>
               </DialogFooter>
-            </form>
+              </form>
+            </div>
           </DialogContent>
         </Dialog>
         </div>
