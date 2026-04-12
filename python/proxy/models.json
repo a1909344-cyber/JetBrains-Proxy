@@ -9,7 +9,8 @@
     "openai-o1",
     "openai-gpt-4o",
     "anthropic-claude-3.5-sonnet",
-    "openai-gpt4.1"
+    "openai-gpt4.1",
+    "anthropic-claude-4-6-opus"
   ],
   "anthropic_model_mappings": {
     "claude-sonnet-4-20250514": "anthropic-claude-4-sonnet",

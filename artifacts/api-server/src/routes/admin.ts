@@ -8,6 +8,17 @@ const DATA_DIR = process.env["DATA_DIR"] || path.join(process.cwd(), "..", "..",
 const LOG_FILE = process.env["LOG_FILE"] || path.join(process.cwd(), "..", "..", "python", "proxy.log");
 const PROXY_INTERNAL_URL = process.env["PROXY_INTERNAL_URL"] || "http://localhost:8000";
 
+async function reloadProxyConfig(): Promise<void> {
+  try {
+    await fetch(`${PROXY_INTERNAL_URL}/admin/reload-config`, {
+      method: "POST",
+      signal: AbortSignal.timeout(5000),
+    });
+  } catch {
+    // Non-fatal — proxy may be restarting; config is already written to disk
+  }
+}
+
 function readJson(filename: string): unknown {
   const filepath = path.join(DATA_DIR, filename);
   if (!fs.existsSync(filepath)) return null;
@@ -60,12 +71,13 @@ router.get("/admin/config/jetbrainsai", (req, res) => {
   res.json(data ?? []);
 });
 
-router.put("/admin/config/jetbrainsai", (req, res) => {
+router.put("/admin/config/jetbrainsai", async (req, res) => {
   if (!Array.isArray(req.body)) {
     res.status(400).json({ error: "Expected a JSON array of accounts" });
     return;
   }
   writeJson("jetbrainsai.json", req.body);
+  await reloadProxyConfig();
   res.json({ success: true });
 });
 
@@ -74,12 +86,13 @@ router.get("/admin/config/client-keys", (req, res) => {
   res.json(data ?? []);
 });
 
-router.put("/admin/config/client-keys", (req, res) => {
+router.put("/admin/config/client-keys", async (req, res) => {
   if (!Array.isArray(req.body)) {
     res.status(400).json({ error: "Expected a JSON array of keys" });
     return;
   }
   writeJson("client_api_keys.json", req.body);
+  await reloadProxyConfig();
   res.json({ success: true });
 });
 
@@ -88,13 +101,14 @@ router.get("/admin/config/models", (req, res) => {
   res.json(data ?? { models: [], anthropic_model_mappings: {} });
 });
 
-router.put("/admin/config/models", (req, res) => {
+router.put("/admin/config/models", async (req, res) => {
   const body = req.body as Record<string, unknown>;
   if (typeof body !== "object" || !Array.isArray(body?.models)) {
     res.status(400).json({ error: "Expected an object with 'models' array field" });
     return;
   }
   writeJson("models.json", body);
+  await reloadProxyConfig();
   res.json({ success: true });
 });
 

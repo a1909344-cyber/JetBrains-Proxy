@@ -528,6 +528,16 @@ async def shutdown():
         await http_client.aclose()
 
 
+@app.post("/admin/reload-config")
+async def reload_config():
+    """重新加载所有配置文件（由管理面板调用）"""
+    global models_data
+    models_data = load_models()
+    load_client_api_keys()
+    load_jetbrains_accounts()
+    return {"success": True, "message": "配置已重新加载"}
+
+
 # API 端点
 @app.get("/v1/models", response_model=ModelList)
 async def list_models(_: None = Depends(authenticate_any_client)):
