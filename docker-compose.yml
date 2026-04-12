@@ -6,6 +6,10 @@ services:
       context: .
       dockerfile: docker/Dockerfile.proxy
     restart: unless-stopped
+    # Use public DNS to ensure external hostname resolution works in all environments
+    dns:
+      - 8.8.8.8
+      - 8.8.4.4
     volumes:
       - proxy-data:/data
     healthcheck:
@@ -24,6 +28,10 @@ services:
     depends_on:
       proxy:
         condition: service_healthy
+    # Use public DNS to ensure external hostname resolution works in all environments
+    dns:
+      - 8.8.8.8
+      - 8.8.4.4
     environment:
       PORT: "8080"
       NODE_ENV: production

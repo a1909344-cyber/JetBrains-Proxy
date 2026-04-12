@@ -1,5 +1,11 @@
 FROM python:3.11-slim
 
+# Install CA certificates and curl (for TLS verification and connectivity debugging)
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    ca-certificates \
+    curl \
+    && rm -rf /var/lib/apt/lists/*
+
 WORKDIR /data
 
 COPY python/proxy/requirements.txt /tmp/requirements.txt
