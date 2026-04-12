@@ -47,3 +47,10 @@ Thumbs.db
 # Replit
 .cache/
 .local/
+
+# Sensitive runtime data — do NOT commit
+python/proxy/jetbrainsai.json
+python/proxy/client_api_keys.json
+python/proxy/usage_stats.json
+python/proxy/proxy.log
+*.log

@@ -66,6 +66,14 @@ export default defineConfig({
       strict: true,
       deny: ["**/.*"],
     },
+    // In local dev, proxy /api to the API server (port 8080).
+    // In Replit, the platform proxy routes /api/* directly to the API server.
+    proxy: {
+      "/api": {
+        target: process.env.VITE_API_SERVER_URL ?? "http://localhost:8080",
+        changeOrigin: true,
+      },
+    },
   },
   preview: {
     port,

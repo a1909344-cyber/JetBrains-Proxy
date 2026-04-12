@@ -1,0 +1,11 @@
+[
+  {
+    "licenseId": "XXXXXXXXXXX",
+    "authorization": "Bearer eyJ...",
+    "jwt": "eyJ...",
+    "last_updated": 0,
+    "has_quota": true,
+    "last_quota_check": 0,
+    "enabled": true
+  }
+]

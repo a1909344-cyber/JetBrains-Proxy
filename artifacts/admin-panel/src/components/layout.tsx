@@ -7,14 +7,20 @@ import {
   TerminalSquare, 
   Activity, 
   Menu,
-  Languages
+  Languages,
+  LogOut,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 import { useState } from "react";
 import { useLang } from "@/lib/i18n";
 
-export function Layout({ children }: { children: React.ReactNode }) {
+interface LayoutProps {
+  children: React.ReactNode;
+  onLogout?: () => void;
+}
+
+export function Layout({ children, onLogout }: LayoutProps) {
   const [location] = useLocation();
   const [open, setOpen] = useState(false);
   const { t, lang, setLang } = useLang();
@@ -40,6 +46,21 @@ export function Layout({ children }: { children: React.ReactNode }) {
       {lang === "zh" ? "EN / 英文" : "中文 / ZH"}
     </Button>
   );
+
+  const LogoutButton = () => onLogout ? (
+    <Button
+      variant="ghost"
+      size="sm"
+      onClick={() => {
+        if (window.confirm(t("login_logout_confirm"))) onLogout();
+      }}
+      className="w-full justify-start gap-2 text-sidebar-foreground text-xs mt-1 hover:text-destructive hover:bg-destructive/10"
+      title={t("login_logout")}
+    >
+      <LogOut className="h-4 w-4 shrink-0" />
+      {t("login_logout")}
+    </Button>
+  ) : null;
 
   const NavLinks = () => (
     <div className="flex flex-col gap-1 w-full">
@@ -78,6 +99,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
         </nav>
         <div className="border-t border-sidebar-border pt-3 mt-3">
           <LangToggle />
+          <LogoutButton />
         </div>
       </aside>
 
@@ -102,6 +124,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
               <NavLinks />
               <div className="border-t border-sidebar-border pt-3 mt-3">
                 <LangToggle />
+                <LogoutButton />
               </div>
             </SheetContent>
           </Sheet>

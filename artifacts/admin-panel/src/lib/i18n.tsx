@@ -227,6 +227,17 @@ const translations = {
     common_test: "测试",
     common_refresh: "刷新",
     common_copy: "复制",
+
+    // Login
+    login_title: "管理员登录",
+    login_subtitle: "JetBrains AI 代理管理面板",
+    login_password: "管理员密码",
+    login_password_placeholder: "请输入管理员密码",
+    login_submit: "登录",
+    login_submitting: "登录中…",
+    login_error: "密码错误，请重试",
+    login_logout: "退出登录",
+    login_logout_confirm: "确认退出登录？",
   },
 
   en: {
@@ -453,6 +464,17 @@ const translations = {
     common_test: "Test",
     common_refresh: "Refresh",
     common_copy: "Copy",
+
+    // Login
+    login_title: "Admin Login",
+    login_subtitle: "JetBrains AI Proxy Admin Panel",
+    login_password: "Admin Password",
+    login_password_placeholder: "Enter admin password",
+    login_submit: "Login",
+    login_submitting: "Logging in…",
+    login_error: "Incorrect password. Please try again.",
+    login_logout: "Logout",
+    login_logout_confirm: "Confirm logout?",
   },
 } as const;
 
