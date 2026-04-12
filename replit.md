@@ -64,6 +64,16 @@ JetBrains accounts in `jetbrainsai.json` support three modes:
 - PKCE method: S256
 - Background refresh: api-server checks every 10 min, refreshes when `id_token_expires_at` < 5 min
 
+## Authentication
+
+The admin panel is protected by a password stored in the `ADMIN_PASSWORD` environment secret.
+
+- Token-based auth: login returns a HMAC token derived from `SESSION_SECRET + ADMIN_PASSWORD`
+- Token stored in `localStorage` as `jb_admin_token`
+- All `/api/admin/*` routes require `Authorization: Bearer <token>` header
+- Token automatically sent by the API client via `setAuthTokenGetter`
+- Changing `ADMIN_PASSWORD` immediately invalidates all existing tokens
+
 ## Key Commands
 
 - `pnpm --filter @workspace/api-spec run codegen` — regenerate API hooks from OpenAPI spec
