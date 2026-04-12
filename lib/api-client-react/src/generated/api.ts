@@ -5,18 +5,32 @@
  * API specification
  * OpenAPI spec version: 0.1.0
  */
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery } from "@tanstack/react-query";
 import type {
+  MutationFunction,
   QueryFunction,
   QueryKey,
+  UseMutationOptions,
+  UseMutationResult,
   UseQueryOptions,
   UseQueryResult,
 } from "@tanstack/react-query";
 
-import type { HealthStatus } from "./api.schemas";
+import type {
+  AdminStatus,
+  GetProxyLogsParams,
+  HealthStatus,
+  JetbrainsAccount,
+  LogsResult,
+  ModelsConfig,
+  ProxyTestResult,
+  SaveResult,
+  TestChatRequest,
+  TestModelsRequest,
+} from "./api.schemas";
 
 import { customFetch } from "../custom-fetch";
-import type { ErrorType } from "../custom-fetch";
+import type { ErrorType, BodyType } from "../custom-fetch";
 
 type AwaitedInput<T> = PromiseLike<T> | T;
 
@@ -99,3 +113,828 @@ export function useHealthCheck<
 
   return { ...query, queryKey: queryOptions.queryKey };
 }
+
+/**
+ * Returns proxy online status, model/account/key counts
+ * @summary Get service status
+ */
+export const getGetAdminStatusUrl = () => {
+  return `/api/admin/status`;
+};
+
+export const getAdminStatus = async (
+  options?: RequestInit,
+): Promise<AdminStatus> => {
+  return customFetch<AdminStatus>(getGetAdminStatusUrl(), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getGetAdminStatusQueryKey = () => {
+  return [`/api/admin/status`] as const;
+};
+
+export const getGetAdminStatusQueryOptions = <
+  TData = Awaited<ReturnType<typeof getAdminStatus>>,
+  TError = ErrorType<unknown>,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof getAdminStatus>>,
+    TError,
+    TData
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey = queryOptions?.queryKey ?? getGetAdminStatusQueryKey();
+
+  const queryFn: QueryFunction<Awaited<ReturnType<typeof getAdminStatus>>> = ({
+    signal,
+  }) => getAdminStatus({ signal, ...requestOptions });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof getAdminStatus>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type GetAdminStatusQueryResult = NonNullable<
+  Awaited<ReturnType<typeof getAdminStatus>>
+>;
+export type GetAdminStatusQueryError = ErrorType<unknown>;
+
+/**
+ * @summary Get service status
+ */
+
+export function useGetAdminStatus<
+  TData = Awaited<ReturnType<typeof getAdminStatus>>,
+  TError = ErrorType<unknown>,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof getAdminStatus>>,
+    TError,
+    TData
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getGetAdminStatusQueryOptions(options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * @summary Get JetBrains accounts
+ */
+export const getGetJetbrainsAccountsUrl = () => {
+  return `/api/admin/config/jetbrainsai`;
+};
+
+export const getJetbrainsAccounts = async (
+  options?: RequestInit,
+): Promise<JetbrainsAccount[]> => {
+  return customFetch<JetbrainsAccount[]>(getGetJetbrainsAccountsUrl(), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getGetJetbrainsAccountsQueryKey = () => {
+  return [`/api/admin/config/jetbrainsai`] as const;
+};
+
+export const getGetJetbrainsAccountsQueryOptions = <
+  TData = Awaited<ReturnType<typeof getJetbrainsAccounts>>,
+  TError = ErrorType<unknown>,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof getJetbrainsAccounts>>,
+    TError,
+    TData
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey = queryOptions?.queryKey ?? getGetJetbrainsAccountsQueryKey();
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof getJetbrainsAccounts>>
+  > = ({ signal }) => getJetbrainsAccounts({ signal, ...requestOptions });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof getJetbrainsAccounts>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type GetJetbrainsAccountsQueryResult = NonNullable<
+  Awaited<ReturnType<typeof getJetbrainsAccounts>>
+>;
+export type GetJetbrainsAccountsQueryError = ErrorType<unknown>;
+
+/**
+ * @summary Get JetBrains accounts
+ */
+
+export function useGetJetbrainsAccounts<
+  TData = Awaited<ReturnType<typeof getJetbrainsAccounts>>,
+  TError = ErrorType<unknown>,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof getJetbrainsAccounts>>,
+    TError,
+    TData
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getGetJetbrainsAccountsQueryOptions(options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * @summary Save JetBrains accounts
+ */
+export const getPutJetbrainsAccountsUrl = () => {
+  return `/api/admin/config/jetbrainsai`;
+};
+
+export const putJetbrainsAccounts = async (
+  jetbrainsAccount: JetbrainsAccount[],
+  options?: RequestInit,
+): Promise<SaveResult> => {
+  return customFetch<SaveResult>(getPutJetbrainsAccountsUrl(), {
+    ...options,
+    method: "PUT",
+    headers: { "Content-Type": "application/json", ...options?.headers },
+    body: JSON.stringify(jetbrainsAccount),
+  });
+};
+
+export const getPutJetbrainsAccountsMutationOptions = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof putJetbrainsAccounts>>,
+    TError,
+    { data: BodyType<JetbrainsAccount[]> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof putJetbrainsAccounts>>,
+  TError,
+  { data: BodyType<JetbrainsAccount[]> },
+  TContext
+> => {
+  const mutationKey = ["putJetbrainsAccounts"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof putJetbrainsAccounts>>,
+    { data: BodyType<JetbrainsAccount[]> }
+  > = (props) => {
+    const { data } = props ?? {};
+
+    return putJetbrainsAccounts(data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type PutJetbrainsAccountsMutationResult = NonNullable<
+  Awaited<ReturnType<typeof putJetbrainsAccounts>>
+>;
+export type PutJetbrainsAccountsMutationBody = BodyType<JetbrainsAccount[]>;
+export type PutJetbrainsAccountsMutationError = ErrorType<unknown>;
+
+/**
+ * @summary Save JetBrains accounts
+ */
+export const usePutJetbrainsAccounts = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof putJetbrainsAccounts>>,
+    TError,
+    { data: BodyType<JetbrainsAccount[]> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof putJetbrainsAccounts>>,
+  TError,
+  { data: BodyType<JetbrainsAccount[]> },
+  TContext
+> => {
+  return useMutation(getPutJetbrainsAccountsMutationOptions(options));
+};
+
+/**
+ * @summary Get client API keys
+ */
+export const getGetClientKeysUrl = () => {
+  return `/api/admin/config/client-keys`;
+};
+
+export const getClientKeys = async (
+  options?: RequestInit,
+): Promise<string[]> => {
+  return customFetch<string[]>(getGetClientKeysUrl(), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getGetClientKeysQueryKey = () => {
+  return [`/api/admin/config/client-keys`] as const;
+};
+
+export const getGetClientKeysQueryOptions = <
+  TData = Awaited<ReturnType<typeof getClientKeys>>,
+  TError = ErrorType<unknown>,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof getClientKeys>>,
+    TError,
+    TData
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey = queryOptions?.queryKey ?? getGetClientKeysQueryKey();
+
+  const queryFn: QueryFunction<Awaited<ReturnType<typeof getClientKeys>>> = ({
+    signal,
+  }) => getClientKeys({ signal, ...requestOptions });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof getClientKeys>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type GetClientKeysQueryResult = NonNullable<
+  Awaited<ReturnType<typeof getClientKeys>>
+>;
+export type GetClientKeysQueryError = ErrorType<unknown>;
+
+/**
+ * @summary Get client API keys
+ */
+
+export function useGetClientKeys<
+  TData = Awaited<ReturnType<typeof getClientKeys>>,
+  TError = ErrorType<unknown>,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof getClientKeys>>,
+    TError,
+    TData
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getGetClientKeysQueryOptions(options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * @summary Save client API keys
+ */
+export const getPutClientKeysUrl = () => {
+  return `/api/admin/config/client-keys`;
+};
+
+export const putClientKeys = async (
+  putClientKeysBody: string[],
+  options?: RequestInit,
+): Promise<SaveResult> => {
+  return customFetch<SaveResult>(getPutClientKeysUrl(), {
+    ...options,
+    method: "PUT",
+    headers: { "Content-Type": "application/json", ...options?.headers },
+    body: JSON.stringify(putClientKeysBody),
+  });
+};
+
+export const getPutClientKeysMutationOptions = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof putClientKeys>>,
+    TError,
+    { data: BodyType<string[]> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof putClientKeys>>,
+  TError,
+  { data: BodyType<string[]> },
+  TContext
+> => {
+  const mutationKey = ["putClientKeys"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof putClientKeys>>,
+    { data: BodyType<string[]> }
+  > = (props) => {
+    const { data } = props ?? {};
+
+    return putClientKeys(data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type PutClientKeysMutationResult = NonNullable<
+  Awaited<ReturnType<typeof putClientKeys>>
+>;
+export type PutClientKeysMutationBody = BodyType<string[]>;
+export type PutClientKeysMutationError = ErrorType<unknown>;
+
+/**
+ * @summary Save client API keys
+ */
+export const usePutClientKeys = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof putClientKeys>>,
+    TError,
+    { data: BodyType<string[]> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof putClientKeys>>,
+  TError,
+  { data: BodyType<string[]> },
+  TContext
+> => {
+  return useMutation(getPutClientKeysMutationOptions(options));
+};
+
+/**
+ * @summary Get models configuration
+ */
+export const getGetModelsConfigUrl = () => {
+  return `/api/admin/config/models`;
+};
+
+export const getModelsConfig = async (
+  options?: RequestInit,
+): Promise<ModelsConfig> => {
+  return customFetch<ModelsConfig>(getGetModelsConfigUrl(), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getGetModelsConfigQueryKey = () => {
+  return [`/api/admin/config/models`] as const;
+};
+
+export const getGetModelsConfigQueryOptions = <
+  TData = Awaited<ReturnType<typeof getModelsConfig>>,
+  TError = ErrorType<unknown>,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof getModelsConfig>>,
+    TError,
+    TData
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey = queryOptions?.queryKey ?? getGetModelsConfigQueryKey();
+
+  const queryFn: QueryFunction<Awaited<ReturnType<typeof getModelsConfig>>> = ({
+    signal,
+  }) => getModelsConfig({ signal, ...requestOptions });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof getModelsConfig>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type GetModelsConfigQueryResult = NonNullable<
+  Awaited<ReturnType<typeof getModelsConfig>>
+>;
+export type GetModelsConfigQueryError = ErrorType<unknown>;
+
+/**
+ * @summary Get models configuration
+ */
+
+export function useGetModelsConfig<
+  TData = Awaited<ReturnType<typeof getModelsConfig>>,
+  TError = ErrorType<unknown>,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof getModelsConfig>>,
+    TError,
+    TData
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getGetModelsConfigQueryOptions(options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * @summary Save models configuration
+ */
+export const getPutModelsConfigUrl = () => {
+  return `/api/admin/config/models`;
+};
+
+export const putModelsConfig = async (
+  modelsConfig: ModelsConfig,
+  options?: RequestInit,
+): Promise<SaveResult> => {
+  return customFetch<SaveResult>(getPutModelsConfigUrl(), {
+    ...options,
+    method: "PUT",
+    headers: { "Content-Type": "application/json", ...options?.headers },
+    body: JSON.stringify(modelsConfig),
+  });
+};
+
+export const getPutModelsConfigMutationOptions = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof putModelsConfig>>,
+    TError,
+    { data: BodyType<ModelsConfig> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof putModelsConfig>>,
+  TError,
+  { data: BodyType<ModelsConfig> },
+  TContext
+> => {
+  const mutationKey = ["putModelsConfig"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof putModelsConfig>>,
+    { data: BodyType<ModelsConfig> }
+  > = (props) => {
+    const { data } = props ?? {};
+
+    return putModelsConfig(data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type PutModelsConfigMutationResult = NonNullable<
+  Awaited<ReturnType<typeof putModelsConfig>>
+>;
+export type PutModelsConfigMutationBody = BodyType<ModelsConfig>;
+export type PutModelsConfigMutationError = ErrorType<unknown>;
+
+/**
+ * @summary Save models configuration
+ */
+export const usePutModelsConfig = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof putModelsConfig>>,
+    TError,
+    { data: BodyType<ModelsConfig> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof putModelsConfig>>,
+  TError,
+  { data: BodyType<ModelsConfig> },
+  TContext
+> => {
+  return useMutation(getPutModelsConfigMutationOptions(options));
+};
+
+/**
+ * @summary Get proxy service logs
+ */
+export const getGetProxyLogsUrl = (params?: GetProxyLogsParams) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? "null" : value.toString());
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0
+    ? `/api/admin/logs?${stringifiedParams}`
+    : `/api/admin/logs`;
+};
+
+export const getProxyLogs = async (
+  params?: GetProxyLogsParams,
+  options?: RequestInit,
+): Promise<LogsResult> => {
+  return customFetch<LogsResult>(getGetProxyLogsUrl(params), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getGetProxyLogsQueryKey = (params?: GetProxyLogsParams) => {
+  return [`/api/admin/logs`, ...(params ? [params] : [])] as const;
+};
+
+export const getGetProxyLogsQueryOptions = <
+  TData = Awaited<ReturnType<typeof getProxyLogs>>,
+  TError = ErrorType<unknown>,
+>(
+  params?: GetProxyLogsParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getProxyLogs>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey = queryOptions?.queryKey ?? getGetProxyLogsQueryKey(params);
+
+  const queryFn: QueryFunction<Awaited<ReturnType<typeof getProxyLogs>>> = ({
+    signal,
+  }) => getProxyLogs(params, { signal, ...requestOptions });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof getProxyLogs>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type GetProxyLogsQueryResult = NonNullable<
+  Awaited<ReturnType<typeof getProxyLogs>>
+>;
+export type GetProxyLogsQueryError = ErrorType<unknown>;
+
+/**
+ * @summary Get proxy service logs
+ */
+
+export function useGetProxyLogs<
+  TData = Awaited<ReturnType<typeof getProxyLogs>>,
+  TError = ErrorType<unknown>,
+>(
+  params?: GetProxyLogsParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getProxyLogs>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getGetProxyLogsQueryOptions(params, options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * @summary Test proxy GET /v1/models
+ */
+export const getTestProxyModelsUrl = () => {
+  return `/api/admin/proxy/test-models`;
+};
+
+export const testProxyModels = async (
+  testModelsRequest: TestModelsRequest,
+  options?: RequestInit,
+): Promise<ProxyTestResult> => {
+  return customFetch<ProxyTestResult>(getTestProxyModelsUrl(), {
+    ...options,
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...options?.headers },
+    body: JSON.stringify(testModelsRequest),
+  });
+};
+
+export const getTestProxyModelsMutationOptions = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof testProxyModels>>,
+    TError,
+    { data: BodyType<TestModelsRequest> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof testProxyModels>>,
+  TError,
+  { data: BodyType<TestModelsRequest> },
+  TContext
+> => {
+  const mutationKey = ["testProxyModels"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof testProxyModels>>,
+    { data: BodyType<TestModelsRequest> }
+  > = (props) => {
+    const { data } = props ?? {};
+
+    return testProxyModels(data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type TestProxyModelsMutationResult = NonNullable<
+  Awaited<ReturnType<typeof testProxyModels>>
+>;
+export type TestProxyModelsMutationBody = BodyType<TestModelsRequest>;
+export type TestProxyModelsMutationError = ErrorType<unknown>;
+
+/**
+ * @summary Test proxy GET /v1/models
+ */
+export const useTestProxyModels = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof testProxyModels>>,
+    TError,
+    { data: BodyType<TestModelsRequest> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof testProxyModels>>,
+  TError,
+  { data: BodyType<TestModelsRequest> },
+  TContext
+> => {
+  return useMutation(getTestProxyModelsMutationOptions(options));
+};
+
+/**
+ * @summary Test proxy POST /v1/chat/completions
+ */
+export const getTestProxyChatUrl = () => {
+  return `/api/admin/proxy/test-chat`;
+};
+
+export const testProxyChat = async (
+  testChatRequest: TestChatRequest,
+  options?: RequestInit,
+): Promise<ProxyTestResult> => {
+  return customFetch<ProxyTestResult>(getTestProxyChatUrl(), {
+    ...options,
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...options?.headers },
+    body: JSON.stringify(testChatRequest),
+  });
+};
+
+export const getTestProxyChatMutationOptions = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof testProxyChat>>,
+    TError,
+    { data: BodyType<TestChatRequest> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof testProxyChat>>,
+  TError,
+  { data: BodyType<TestChatRequest> },
+  TContext
+> => {
+  const mutationKey = ["testProxyChat"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof testProxyChat>>,
+    { data: BodyType<TestChatRequest> }
+  > = (props) => {
+    const { data } = props ?? {};
+
+    return testProxyChat(data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type TestProxyChatMutationResult = NonNullable<
+  Awaited<ReturnType<typeof testProxyChat>>
+>;
+export type TestProxyChatMutationBody = BodyType<TestChatRequest>;
+export type TestProxyChatMutationError = ErrorType<unknown>;
+
+/**
+ * @summary Test proxy POST /v1/chat/completions
+ */
+export const useTestProxyChat = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof testProxyChat>>,
+    TError,
+    { data: BodyType<TestChatRequest> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof testProxyChat>>,
+  TError,
+  { data: BodyType<TestChatRequest> },
+  TContext
+> => {
+  return useMutation(getTestProxyChatMutationOptions(options));
+};

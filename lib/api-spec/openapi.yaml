@@ -10,6 +10,8 @@ servers:
 tags:
   - name: health
     description: Health operations
+  - name: admin
+    description: Admin management operations
 paths:
   /healthz:
     get:
@@ -24,6 +26,176 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/HealthStatus"
+
+  /admin/status:
+    get:
+      operationId: getAdminStatus
+      tags: [admin]
+      summary: Get service status
+      description: Returns proxy online status, model/account/key counts
+      responses:
+        "200":
+          description: Status info
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminStatus"
+
+  /admin/config/jetbrainsai:
+    get:
+      operationId: getJetbrainsAccounts
+      tags: [admin]
+      summary: Get JetBrains accounts
+      responses:
+        "200":
+          description: List of accounts
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/JetbrainsAccount"
+    put:
+      operationId: putJetbrainsAccounts
+      tags: [admin]
+      summary: Save JetBrains accounts
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: array
+              items:
+                $ref: "#/components/schemas/JetbrainsAccount"
+      responses:
+        "200":
+          description: Saved
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SaveResult"
+
+  /admin/config/client-keys:
+    get:
+      operationId: getClientKeys
+      tags: [admin]
+      summary: Get client API keys
+      responses:
+        "200":
+          description: List of API keys
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: string
+    put:
+      operationId: putClientKeys
+      tags: [admin]
+      summary: Save client API keys
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: array
+              items:
+                type: string
+      responses:
+        "200":
+          description: Saved
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SaveResult"
+
+  /admin/config/models:
+    get:
+      operationId: getModelsConfig
+      tags: [admin]
+      summary: Get models configuration
+      responses:
+        "200":
+          description: Models config
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ModelsConfig"
+    put:
+      operationId: putModelsConfig
+      tags: [admin]
+      summary: Save models configuration
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ModelsConfig"
+      responses:
+        "200":
+          description: Saved
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SaveResult"
+
+  /admin/logs:
+    get:
+      operationId: getProxyLogs
+      tags: [admin]
+      summary: Get proxy service logs
+      parameters:
+        - name: lines
+          in: query
+          schema:
+            type: integer
+            default: 200
+      responses:
+        "200":
+          description: Log lines
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LogsResult"
+
+  /admin/proxy/test-models:
+    post:
+      operationId: testProxyModels
+      tags: [admin]
+      summary: Test proxy GET /v1/models
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TestModelsRequest"
+      responses:
+        "200":
+          description: Test result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProxyTestResult"
+
+  /admin/proxy/test-chat:
+    post:
+      operationId: testProxyChat
+      tags: [admin]
+      summary: Test proxy POST /v1/chat/completions
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TestChatRequest"
+      responses:
+        "200":
+          description: Test result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProxyTestResult"
+
 components:
   schemas:
     HealthStatus:
@@ -34,3 +206,148 @@ components:
       required:
         - status
 
+    AdminStatus:
+      type: object
+      properties:
+        online:
+          type: boolean
+        proxyStatusCode:
+          type: integer
+          nullable: true
+        proxyUrl:
+          type: string
+        error:
+          type: string
+          nullable: true
+        modelCount:
+          type: integer
+        accountCount:
+          type: integer
+        keyCount:
+          type: integer
+        dataDir:
+          type: string
+      required:
+        - online
+        - modelCount
+        - accountCount
+        - keyCount
+        - dataDir
+
+    JetbrainsAccount:
+      type: object
+      properties:
+        jwt:
+          type: string
+          nullable: true
+        licenseId:
+          type: string
+          nullable: true
+        authorization:
+          type: string
+          nullable: true
+        has_quota:
+          type: boolean
+          nullable: true
+        last_updated:
+          type: number
+          nullable: true
+        last_quota_check:
+          type: number
+          nullable: true
+
+    ModelsConfig:
+      type: object
+      properties:
+        models:
+          type: array
+          items:
+            type: string
+        anthropic_model_mappings:
+          type: object
+          additionalProperties:
+            type: string
+      required:
+        - models
+        - anthropic_model_mappings
+
+    SaveResult:
+      type: object
+      properties:
+        success:
+          type: boolean
+      required:
+        - success
+
+    LogsResult:
+      type: object
+      properties:
+        lines:
+          type: array
+          items:
+            type: string
+        total:
+          type: integer
+        file:
+          type: string
+        note:
+          type: string
+      required:
+        - lines
+
+    TestModelsRequest:
+      type: object
+      properties:
+        apiKey:
+          type: string
+        baseUrl:
+          type: string
+          nullable: true
+      required:
+        - apiKey
+
+    TestChatRequest:
+      type: object
+      properties:
+        apiKey:
+          type: string
+        model:
+          type: string
+        messages:
+          type: array
+          items:
+            type: object
+            properties:
+              role:
+                type: string
+              content:
+                type: string
+            required:
+              - role
+              - content
+        stream:
+          type: boolean
+          default: false
+        baseUrl:
+          type: string
+          nullable: true
+      required:
+        - apiKey
+        - model
+        - messages
+
+    ProxyTestResult:
+      type: object
+      properties:
+        status:
+          type: integer
+        data:
+          nullable: true
+        ok:
+          type: boolean
+        error:
+          type: string
+          nullable: true
+      required:
+        - status
+        - ok

@@ -14,3 +14,142 @@ import * as zod from "zod";
 export const HealthCheckResponse = zod.object({
   status: zod.string(),
 });
+
+/**
+ * Returns proxy online status, model/account/key counts
+ * @summary Get service status
+ */
+export const GetAdminStatusResponse = zod.object({
+  online: zod.boolean(),
+  proxyStatusCode: zod.number().nullish(),
+  proxyUrl: zod.string().optional(),
+  error: zod.string().nullish(),
+  modelCount: zod.number(),
+  accountCount: zod.number(),
+  keyCount: zod.number(),
+  dataDir: zod.string(),
+});
+
+/**
+ * @summary Get JetBrains accounts
+ */
+export const GetJetbrainsAccountsResponseItem = zod.object({
+  jwt: zod.string().nullish(),
+  licenseId: zod.string().nullish(),
+  authorization: zod.string().nullish(),
+  has_quota: zod.boolean().nullish(),
+  last_updated: zod.number().nullish(),
+  last_quota_check: zod.number().nullish(),
+});
+export const GetJetbrainsAccountsResponse = zod.array(
+  GetJetbrainsAccountsResponseItem,
+);
+
+/**
+ * @summary Save JetBrains accounts
+ */
+export const PutJetbrainsAccountsBodyItem = zod.object({
+  jwt: zod.string().nullish(),
+  licenseId: zod.string().nullish(),
+  authorization: zod.string().nullish(),
+  has_quota: zod.boolean().nullish(),
+  last_updated: zod.number().nullish(),
+  last_quota_check: zod.number().nullish(),
+});
+export const PutJetbrainsAccountsBody = zod.array(PutJetbrainsAccountsBodyItem);
+
+export const PutJetbrainsAccountsResponse = zod.object({
+  success: zod.boolean(),
+});
+
+/**
+ * @summary Get client API keys
+ */
+export const GetClientKeysResponseItem = zod.string();
+export const GetClientKeysResponse = zod.array(GetClientKeysResponseItem);
+
+/**
+ * @summary Save client API keys
+ */
+export const PutClientKeysBodyItem = zod.string();
+export const PutClientKeysBody = zod.array(PutClientKeysBodyItem);
+
+export const PutClientKeysResponse = zod.object({
+  success: zod.boolean(),
+});
+
+/**
+ * @summary Get models configuration
+ */
+export const GetModelsConfigResponse = zod.object({
+  models: zod.array(zod.string()),
+  anthropic_model_mappings: zod.record(zod.string(), zod.string()),
+});
+
+/**
+ * @summary Save models configuration
+ */
+export const PutModelsConfigBody = zod.object({
+  models: zod.array(zod.string()),
+  anthropic_model_mappings: zod.record(zod.string(), zod.string()),
+});
+
+export const PutModelsConfigResponse = zod.object({
+  success: zod.boolean(),
+});
+
+/**
+ * @summary Get proxy service logs
+ */
+export const getProxyLogsQueryLinesDefault = 200;
+
+export const GetProxyLogsQueryParams = zod.object({
+  lines: zod.coerce.number().default(getProxyLogsQueryLinesDefault),
+});
+
+export const GetProxyLogsResponse = zod.object({
+  lines: zod.array(zod.string()),
+  total: zod.number().optional(),
+  file: zod.string().optional(),
+  note: zod.string().optional(),
+});
+
+/**
+ * @summary Test proxy GET /v1/models
+ */
+export const TestProxyModelsBody = zod.object({
+  apiKey: zod.string(),
+  baseUrl: zod.string().nullish(),
+});
+
+export const TestProxyModelsResponse = zod.object({
+  status: zod.number(),
+  data: zod.unknown().nullish(),
+  ok: zod.boolean(),
+  error: zod.string().nullish(),
+});
+
+/**
+ * @summary Test proxy POST /v1/chat/completions
+ */
+export const testProxyChatBodyStreamDefault = false;
+
+export const TestProxyChatBody = zod.object({
+  apiKey: zod.string(),
+  model: zod.string(),
+  messages: zod.array(
+    zod.object({
+      role: zod.string(),
+      content: zod.string(),
+    }),
+  ),
+  stream: zod.boolean().default(testProxyChatBodyStreamDefault),
+  baseUrl: zod.string().nullish(),
+});
+
+export const TestProxyChatResponse = zod.object({
+  status: zod.number(),
+  data: zod.unknown().nullish(),
+  ok: zod.boolean(),
+  error: zod.string().nullish(),
+});

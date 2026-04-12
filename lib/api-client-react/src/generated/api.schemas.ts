@@ -8,3 +8,70 @@
 export interface HealthStatus {
   status: string;
 }
+
+export interface AdminStatus {
+  online: boolean;
+  proxyStatusCode?: number | null;
+  proxyUrl?: string;
+  error?: string | null;
+  modelCount: number;
+  accountCount: number;
+  keyCount: number;
+  dataDir: string;
+}
+
+export interface JetbrainsAccount {
+  jwt?: string | null;
+  licenseId?: string | null;
+  authorization?: string | null;
+  has_quota?: boolean | null;
+  last_updated?: number | null;
+  last_quota_check?: number | null;
+}
+
+export type ModelsConfigAnthropicModelMappings = { [key: string]: string };
+
+export interface ModelsConfig {
+  models: string[];
+  anthropic_model_mappings: ModelsConfigAnthropicModelMappings;
+}
+
+export interface SaveResult {
+  success: boolean;
+}
+
+export interface LogsResult {
+  lines: string[];
+  total?: number;
+  file?: string;
+  note?: string;
+}
+
+export interface TestModelsRequest {
+  apiKey: string;
+  baseUrl?: string | null;
+}
+
+export type TestChatRequestMessagesItem = {
+  role: string;
+  content: string;
+};
+
+export interface TestChatRequest {
+  apiKey: string;
+  model: string;
+  messages: TestChatRequestMessagesItem[];
+  stream?: boolean;
+  baseUrl?: string | null;
+}
+
+export interface ProxyTestResult {
+  status: number;
+  data?: unknown | null;
+  ok: boolean;
+  error?: string | null;
+}
+
+export type GetProxyLogsParams = {
+  lines?: number;
+};

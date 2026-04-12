@@ -6,4 +6,15 @@
  * OpenAPI spec version: 0.1.0
  */
 
+export * from "./adminStatus";
+export * from "./getProxyLogsParams";
 export * from "./healthStatus";
+export * from "./jetbrainsAccount";
+export * from "./logsResult";
+export * from "./modelsConfig";
+export * from "./modelsConfigAnthropicModelMappings";
+export * from "./proxyTestResult";
+export * from "./saveResult";
+export * from "./testChatRequest";
+export * from "./testChatRequestMessagesItem";
+export * from "./testModelsRequest";
