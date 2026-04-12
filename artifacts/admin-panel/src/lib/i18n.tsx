@@ -59,6 +59,18 @@ const translations = {
     acc_mode_incomplete: "未完整",
 
     // Add Account form
+    add_pw_title: "账号密码登录",
+    add_pw_badge: "全自动 · 一键激活",
+    add_pw_desc: "输入 JetBrains 账号密码，系统自动完成登录、试用激活、License 绑定，全程无需手动操作。",
+    add_pw_email_placeholder: "JetBrains 邮箱",
+    add_pw_pass_placeholder: "密码",
+    add_pw_submit: "一键登录并添加",
+    add_pw_success: "添加成功！邮箱: {email}",
+    add_pw_success_trial: "添加成功并已激活试用！邮箱: {email}",
+    add_pw_err_email: "请输入 JetBrains 邮箱",
+    add_pw_err_pass: "请输入密码",
+    add_pw_note: "密码仅用于本次登录，不会被存储。",
+
     add_oauth_title: "JetBrains OAuth 登录",
     add_oauth_badge: "推荐 · Token 自动刷新",
     add_oauth_desc: "用你的 JetBrains 账号一键授权，系统每 50 分钟自动更新认证 Token，无需手动维护。",
@@ -273,6 +285,18 @@ const translations = {
     acc_mode_incomplete: "Incomplete",
 
     // Add Account form
+    add_pw_title: "Password Login",
+    add_pw_badge: "Fully Automatic · One Click",
+    add_pw_desc: "Enter your JetBrains account email and password. The system will automatically log in, activate the trial, and bind your license — no manual steps needed.",
+    add_pw_email_placeholder: "JetBrains email",
+    add_pw_pass_placeholder: "Password",
+    add_pw_submit: "Login & Add Account",
+    add_pw_success: "Account added! Email: {email}",
+    add_pw_success_trial: "Account added and trial activated! Email: {email}",
+    add_pw_err_email: "Please enter your JetBrains email",
+    add_pw_err_pass: "Please enter your password",
+    add_pw_note: "Your password is used only for this login and is never stored.",
+
     add_oauth_title: "JetBrains OAuth Login",
     add_oauth_badge: "Recommended · Auto Token Refresh",
     add_oauth_desc: "Authorize with your JetBrains account. The system refreshes your auth token automatically every 50 minutes — no manual maintenance needed.",

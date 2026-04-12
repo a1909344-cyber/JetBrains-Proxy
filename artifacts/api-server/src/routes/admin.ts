@@ -394,6 +394,341 @@ router.post("/admin/test-jwt-refresh", async (req, res) => {
   }
 });
 
+// ── Password-based auto-login (email+password → id_token → trial → JWT) ──────
+
+const JB_BASE = "https://account.jetbrains.com";
+const JB_INTERNAL_REDIRECT_URI = `${JB_BASE}/oauth2/ide/callback`;
+const OAUTH_CLIENT_INFO = "eyJwcm9kdWN0IjoiUFkiLCJidWlsZCI6IjI2MS4yMjE1OC4zNDAifQ";
+
+const TRIAL_ENCRYPTED_HOSTNAME = "837dXi0iwT8bX6hyYx/jj8C3zRdOhXGfldH6IDWxUGxhR+uNhgtqr0mXpXf/nJd5ieCAGcQXo2XtV2lzBdTEDA==";
+const TRIAL_ENCRYPTED_USERNAME = "2iPzpOCWsIFuwgcAUOrGzZJDJA2tC1zeZXPkHWhSk5rFRoqp2BtfvhVv6yMaBp9a/opRRmMKvHgHseDc2usEmg==";
+const TRIAL_MACHINE_ID = "17ff7a9c-ee0d-409f-a556-a85e43c4097a";
+const TRIAL_MACHINE_UUID = "1-15f741da-48f2-3a49-a2a0-0d45352d1eb6";
+
+class CookieJar {
+  private cookies = new Map<string, string>();
+
+  updateFromResponse(headers: Headers): void {
+    const setCookies: string[] = (headers as Headers & { getSetCookie?(): string[] }).getSetCookie?.() ?? [];
+    for (const cookie of setCookies) {
+      const [kv] = cookie.split(";");
+      const eqIdx = (kv ?? "").indexOf("=");
+      if (eqIdx === -1) continue;
+      const name = kv!.slice(0, eqIdx).trim();
+      const value = kv!.slice(eqIdx + 1).trim();
+      if (name) this.cookies.set(name, value);
+    }
+  }
+
+  toHeader(): string {
+    return Array.from(this.cookies.entries()).map(([k, v]) => `${k}=${v}`).join("; ");
+  }
+
+  get(name: string): string | undefined { return this.cookies.get(name); }
+  entries(): IterableIterator<[string, string]> { return this.cookies.entries(); }
+}
+
+async function jbPasswordLogin(email: string, password: string): Promise<{
+  id_token: string; refresh_token: string; cookies: Record<string, string>; email: string;
+}> {
+  const jar = new CookieJar();
+  const T = 30000;
+
+  // Step 1: GET /login → get XSRF cookie
+  const loginPage = await fetch(`${JB_BASE}/login`, {
+    headers: { "Accept": "text/html" },
+    redirect: "follow",
+    signal: AbortSignal.timeout(T),
+  });
+  jar.updateFromResponse(loginPage.headers);
+  const xsrf = jar.get("_st") ?? jar.get("XSRF-TOKEN") ?? "";
+
+  function jsonHeaders(extra: Record<string, string> = {}): Record<string, string> {
+    return {
+      "Content-Type": "application/json",
+      "X-Requested-With": "XMLHttpRequest",
+      "Cookie": jar.toHeader(),
+      ...(xsrf ? { "X-XSRF-TOKEN": xsrf } : {}),
+      ...extra,
+    };
+  }
+
+  // Step 2: POST /api/auth/sessions → create session
+  const sessionRes = await fetch(`${JB_BASE}/api/auth/sessions`, {
+    method: "POST",
+    headers: jsonHeaders(),
+    body: JSON.stringify({}),
+    signal: AbortSignal.timeout(T),
+  });
+  jar.updateFromResponse(sessionRes.headers);
+  if (!sessionRes.ok) throw new Error(`Session creation failed: ${sessionRes.status}`);
+  const sessionData = await sessionRes.json() as { id: string };
+  const sid = sessionData.id;
+
+  // Step 3: Submit email
+  const emailRes = await fetch(`${JB_BASE}/api/auth/sessions/${sid}/email/login`, {
+    method: "POST",
+    headers: jsonHeaders(),
+    body: JSON.stringify({ email }),
+    signal: AbortSignal.timeout(T),
+  });
+  jar.updateFromResponse(emailRes.headers);
+  const emailData = await emailRes.json() as { state: string };
+  if (emailData.state !== "PASSWORD_REQUIRED") {
+    throw new Error(`Unexpected state after email submit: ${emailData.state}`);
+  }
+
+  // Step 4: Submit password
+  const pwRes = await fetch(`${JB_BASE}/api/auth/sessions/${sid}/password`, {
+    method: "POST",
+    headers: jsonHeaders(),
+    body: JSON.stringify({ password }),
+    signal: AbortSignal.timeout(T),
+  });
+  jar.updateFromResponse(pwRes.headers);
+  const pwData = await pwRes.json() as { state: string };
+  if (pwData.state !== "REDIRECT_TO_RETURN_URL") {
+    throw new Error(`Login failed (state=${pwData.state}) — wrong password or 2FA required`);
+  }
+
+  // Step 5: PKCE + follow redirect chain to get OAuth code
+  const { codeVerifier, codeChallenge } = generatePKCE();
+  const pkceState = crypto.randomBytes(16).toString("hex");
+
+  const authParams = new URLSearchParams({
+    client_id: OAUTH_CLIENT_ID,
+    scope: "openid offline_access r_ide_auth",
+    code_challenge: codeChallenge,
+    code_challenge_method: "S256",
+    state: pkceState,
+    redirect_uri: JB_INTERNAL_REDIRECT_URI,
+    response_type: "code",
+    client_info: OAUTH_CLIENT_INFO,
+  });
+
+  let redirectUrl = `${JB_BASE}/oauth/login?${authParams}`;
+  let finalCode: string | null = null;
+
+  for (let i = 0; i < 15; i++) {
+    const r = await fetch(redirectUrl, {
+      headers: { "Cookie": jar.toHeader() },
+      redirect: "manual",
+      signal: AbortSignal.timeout(T),
+    });
+    jar.updateFromResponse(r.headers);
+    const location = r.headers.get("location") ?? "";
+    if ((location.includes("oauth2/ide/callback") || location.includes("oauth2/ide/callback")) && location.includes("code=")) {
+      const parsed = new URL(location.startsWith("http") ? location : `${JB_BASE}${location}`);
+      finalCode = parsed.searchParams.get("code");
+      break;
+    }
+    if (!location) break;
+    redirectUrl = location.startsWith("http") ? location : `${JB_BASE}${location}`;
+  }
+
+  if (!finalCode) throw new Error("Failed to obtain OAuth authorization code (redirect chain exhausted)");
+
+  // Step 6: Exchange code for tokens
+  const tokenRes = await fetch(JB_TOKEN_URL, {
+    method: "POST",
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    body: new URLSearchParams({
+      grant_type: "authorization_code",
+      code: finalCode,
+      code_verifier: codeVerifier,
+      client_id: OAUTH_CLIENT_ID,
+      redirect_uri: JB_INTERNAL_REDIRECT_URI,
+    }),
+    signal: AbortSignal.timeout(T),
+  });
+  if (!tokenRes.ok) {
+    const text = await tokenRes.text();
+    throw new Error(`Token exchange failed (${tokenRes.status}): ${text.slice(0, 300)}`);
+  }
+  const tokens = await tokenRes.json() as { id_token: string; refresh_token: string };
+  if (!tokens.refresh_token) throw new Error("No refresh_token in token response");
+
+  let resolvedEmail = email;
+  try { resolvedEmail = (decodeJwtPayload(tokens.id_token).email as string) ?? email; } catch {}
+
+  return {
+    id_token: tokens.id_token,
+    refresh_token: tokens.refresh_token,
+    cookies: Object.fromEntries(jar.entries()),
+    email: resolvedEmail,
+  };
+}
+
+async function checkAiStatus(cookies: Record<string, string>): Promise<{ alreadyActive: boolean }> {
+  try {
+    const cookieHeader = Object.entries(cookies).map(([k, v]) => `${k}=${v}`).join("; ");
+    const r = await fetch(`${JB_BASE}/api/ai/account/settings`, {
+      headers: { "Accept": "application/json", "Cookie": cookieHeader },
+      signal: AbortSignal.timeout(15000),
+    });
+    if (!r.ok) return { alreadyActive: false };
+    const data = await r.json() as { personal?: { showAIPlans?: boolean } };
+    return { alreadyActive: !(data.personal?.showAIPlans ?? true) };
+  } catch { return { alreadyActive: false }; }
+}
+
+async function obtainTrial(userId: string): Promise<{ code: string; reason: string }> {
+  const params = new URLSearchParams({
+    productFamilyId: "AIP",
+    userId,
+    hostName: TRIAL_ENCRYPTED_HOSTNAME,
+    salt: Date.now().toString(),
+    ideProductCode: "II",
+    buildDate: "20250416",
+    clientVersion: "21",
+    secure: "false",
+    userName: TRIAL_ENCRYPTED_USERNAME,
+    buildNumber: "2025.1.1 Build IU-251.25410.109",
+    version: "2025100",
+    machineId: TRIAL_MACHINE_ID,
+    productCode: "AIP",
+    expiredLicenseDays: "0",
+    machineUUID: TRIAL_MACHINE_UUID,
+    checkedOption: "AGREEMENT",
+  });
+  const r = await fetch(`${JB_BASE}/lservice/rpc/obtainTrial.action?${params}`, {
+    headers: { "User-Agent": "local" },
+    signal: AbortSignal.timeout(15000),
+  });
+  const text = await r.text();
+  const codeMatch = text.match(/<responseCode>(\w+)<\/responseCode>/);
+  const reasonMatch = text.match(/<rejectedReason>(.*?)<\/rejectedReason>/);
+  return { code: codeMatch?.[1] ?? "UNKNOWN", reason: reasonMatch?.[1] ?? "" };
+}
+
+async function discoverLicenseId(idToken: string, cookies: Record<string, string>): Promise<string | null> {
+  const candidates: string[] = [];
+
+  // Extract real license IDs from /licenses page (most reliable)
+  try {
+    const cookieHeader = Object.entries(cookies).map(([k, v]) => `${k}=${v}`).join("; ");
+    const r = await fetch(`${JB_BASE}/licenses`, {
+      headers: { "Cookie": cookieHeader },
+      signal: AbortSignal.timeout(15000),
+    });
+    if (r.ok) {
+      const html = await r.text();
+      const matches = [...html.matchAll(/id="license-([A-Z0-9]+)"/g)];
+      for (const m of matches) { if (!candidates.includes(m[1]!)) candidates.push(m[1]!); }
+    }
+  } catch {}
+
+  // Fallback candidates
+  try {
+    const claims = decodeJwtPayload(idToken);
+    const jbaId = String(claims.jba_account_id ?? "");
+    if (jbaId && !candidates.includes(jbaId)) candidates.push(jbaId);
+  } catch {}
+  for (const c of ["AI", "FREE", "TRIAL", "PERSONAL"]) {
+    if (!candidates.includes(c)) candidates.push(c);
+  }
+
+  const headers = {
+    "Authorization": `Bearer ${idToken}`,
+    "User-Agent": "ktor-client",
+    "Content-Type": "application/json",
+  };
+  for (const lid of candidates) {
+    try {
+      const r = await fetch(`${JB_API_BASE}/auth/jetbrains-jwt/provide-access/license/v2`, {
+        method: "POST",
+        headers,
+        body: JSON.stringify({ licenseId: lid }),
+        signal: AbortSignal.timeout(15000),
+      });
+      if (r.ok) {
+        const data = await r.json() as { token?: string };
+        if (data.token) return lid;
+      }
+    } catch {}
+  }
+  return null;
+}
+
+// POST /api/admin/password-login — full auto-activate: email+password → JWT → save
+router.post("/admin/password-login", async (req, res) => {
+  const { email, password } = req.body as { email?: string; password?: string };
+  if (!email?.trim() || !password?.trim()) {
+    res.status(400).json({ error: "email and password are required" });
+    return;
+  }
+
+  // Step 1: Login
+  let loginResult: { id_token: string; refresh_token: string; cookies: Record<string, string>; email: string };
+  try {
+    loginResult = await jbPasswordLogin(email.trim(), password.trim());
+  } catch (e) {
+    res.status(400).json({ error: "login_failed", message: (e as Error).message });
+    return;
+  }
+
+  const { id_token, refresh_token, cookies, email: resolvedEmail } = loginResult;
+
+  // Step 2: Decode user_id
+  let userId = "";
+  try {
+    const claims = decodeJwtPayload(id_token);
+    userId = String(claims.user_id ?? claims.sub ?? "");
+  } catch {}
+
+  // Step 3: Check AI subscription status
+  const { alreadyActive } = await checkAiStatus(cookies);
+
+  // Step 4: Activate trial if needed
+  let trialActivated = false;
+  if (!alreadyActive && userId) {
+    const trial = await obtainTrial(userId);
+    console.log(`[password-login] obtainTrial for ${resolvedEmail}: code=${trial.code} reason=${trial.reason}`);
+    if (trial.reason === "PAYMENT_PROOF_REQUIRED") {
+      res.status(400).json({ error: "need_card", message: "Credit card binding required before trial activation" });
+      return;
+    }
+    trialActivated = trial.code === "OK";
+  }
+
+  // Step 5: Register with Grazie (best-effort)
+  try {
+    await fetch(`${JB_API_BASE}/auth/jetbrains-jwt/register`, {
+      method: "POST",
+      headers: { "Authorization": `Bearer ${id_token}`, "User-Agent": "ktor-client" },
+      signal: AbortSignal.timeout(10000),
+    });
+  } catch {}
+
+  // Step 6: Discover license ID
+  const licenseId = await discoverLicenseId(id_token, cookies);
+  if (!licenseId) {
+    res.status(400).json({ error: "no_license", message: "Activation done but no valid license found — please retry in a few seconds" });
+    return;
+  }
+
+  // Step 7: Save to jetbrainsai.json
+  let idTokenExpiresAt = 0;
+  try { idTokenExpiresAt = ((decodeJwtPayload(id_token).exp as number) || 0) * 1000; } catch {}
+
+  const accounts = (readJson("jetbrainsai.json") as unknown[] | null) ?? [];
+  const existingIdx = accounts.findIndex((a) => (a as Record<string, unknown>).email === resolvedEmail);
+  const newAccount: Record<string, unknown> = {
+    licenseId, authorization: id_token, refresh_token, email: resolvedEmail, id_token_expires_at: idTokenExpiresAt, enabled: true,
+  };
+  if (existingIdx >= 0) {
+    accounts[existingIdx] = { ...(accounts[existingIdx] as Record<string, unknown>), ...newAccount };
+  } else {
+    accounts.push(newAccount);
+  }
+  writeJson("jetbrainsai.json", accounts);
+  await reloadProxyConfig();
+  ensureRefreshLoop();
+
+  console.log(`[password-login] success: email=${resolvedEmail} licenseId=${licenseId} trialActivated=${trialActivated}`);
+  res.json({ ok: true, email: resolvedEmail, licenseId, trialActivated, updated: existingIdx >= 0 });
+});
+
 // ── OAuth routes ─────────────────────────────────────────────────────────────
 
 // GET /api/admin/oauth/start — generate PKCE codes and return JetBrains OAuth URL

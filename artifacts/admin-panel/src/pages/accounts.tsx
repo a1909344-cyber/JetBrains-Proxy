@@ -9,7 +9,7 @@ import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter, DialogClose } from "@/components/ui/dialog";
 import { useToast } from "@/hooks/use-toast";
-import { Trash2, Edit, Plus, CheckCircle2, XCircle, Clock, Power, FlaskConical, Loader2, ChevronDown, ChevronUp, BarChart2, RotateCcw, Zap, BookOpen, Copy, Check, LogIn, ExternalLink } from "lucide-react";
+import { Trash2, Edit, Plus, CheckCircle2, XCircle, Clock, Power, FlaskConical, Loader2, ChevronDown, ChevronUp, BarChart2, RotateCcw, Zap, BookOpen, Copy, Check, LogIn, ExternalLink, KeyRound, Eye, EyeOff } from "lucide-react";
 import { JetbrainsAccount } from "@workspace/api-client-react/src/generated/api.schemas";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useLang } from "@/lib/i18n";
@@ -119,6 +119,45 @@ export default function Accounts() {
   const [importText, setImportText] = useState("");
   const [importMsg, setImportMsg] = useState<{ ok: boolean; text: string } | null>(null);
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
+
+  // Password login state
+  const [pwEmail, setPwEmail] = useState("");
+  const [pwPassword, setPwPassword] = useState("");
+  const [pwShowPass, setPwShowPass] = useState(false);
+  const [pwLoading, setPwLoading] = useState(false);
+  const [pwMsg, setPwMsg] = useState<{ ok: boolean; text: string } | null>(null);
+
+  const handlePasswordLogin = async () => {
+    if (!pwEmail.trim()) { setPwMsg({ ok: false, text: t("add_pw_err_email") }); return; }
+    if (!pwPassword.trim()) { setPwMsg({ ok: false, text: t("add_pw_err_pass") }); return; }
+    setPwLoading(true);
+    setPwMsg(null);
+    try {
+      const res = await fetch(`${BASE}/api/admin/password-login`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: pwEmail.trim(), password: pwPassword.trim() }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        const msg = data.message || data.error || "Login failed";
+        setPwMsg({ ok: false, text: msg });
+        return;
+      }
+      queryClient.invalidateQueries({ queryKey: getGetJetbrainsAccountsQueryKey() });
+      const desc = data.trialActivated
+        ? t("add_pw_success_trial", { email: data.email })
+        : t("add_pw_success", { email: data.email });
+      toast({ title: t("acc_saved"), description: desc });
+      setPwEmail("");
+      setPwPassword("");
+      setIsAddOpen(false);
+    } catch (e) {
+      setPwMsg({ ok: false, text: (e as Error).message });
+    } finally {
+      setPwLoading(false);
+    }
+  };
 
   // OAuth flow state
   const [oauthUrl, setOauthUrl] = useState<string | null>(null);
@@ -400,7 +439,7 @@ export default function Accounts() {
 
         <Dialog open={isAddOpen} onOpenChange={(open) => {
           setIsAddOpen(open);
-          if (!open) { setEditingIndex(null); resetForm(); setImportText(""); setImportMsg(null); setShowGuide(false); setOauthUrl(null); setOauthCallbackUrl(""); setOauthLicenseId(""); setOauthMsg(null); }
+          if (!open) { setEditingIndex(null); resetForm(); setImportText(""); setImportMsg(null); setShowGuide(false); setOauthUrl(null); setOauthCallbackUrl(""); setOauthLicenseId(""); setOauthMsg(null); setPwEmail(""); setPwPassword(""); setPwMsg(null); }
         }}>
           <DialogTrigger asChild>
             <Button data-testid="btn-add-account">
@@ -413,6 +452,63 @@ export default function Accounts() {
               <DialogTitle>{editingIndex !== null ? t("acc_edit") : t("acc_add")}</DialogTitle>
             </DialogHeader>
             <div className="space-y-4 py-2">
+
+              {/* ── Password Login (only show for new accounts) — fully automatic ── */}
+              {editingIndex === null && (
+                <div className="rounded-md border-2 border-emerald-500/60 bg-emerald-500/5 p-4 space-y-3">
+                  <div className="flex items-center gap-2">
+                    <KeyRound className="h-4 w-4 text-emerald-500" />
+                    <span className="text-xs font-semibold text-emerald-600 uppercase tracking-wider">{t("add_pw_title")}</span>
+                    <span className="text-xs bg-emerald-500/20 text-emerald-600 px-1.5 py-0.5 rounded font-medium">{t("add_pw_badge")}</span>
+                  </div>
+                  <p className="text-xs text-muted-foreground">{t("add_pw_desc")}</p>
+                  <div className="space-y-2">
+                    <Input
+                      placeholder={t("add_pw_email_placeholder")}
+                      type="email"
+                      value={pwEmail}
+                      onChange={e => { setPwEmail(e.target.value); setPwMsg(null); }}
+                      className="text-sm"
+                      disabled={pwLoading}
+                    />
+                    <div className="relative">
+                      <Input
+                        placeholder={t("add_pw_pass_placeholder")}
+                        type={pwShowPass ? "text" : "password"}
+                        value={pwPassword}
+                        onChange={e => { setPwPassword(e.target.value); setPwMsg(null); }}
+                        className="text-sm pr-9"
+                        disabled={pwLoading}
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setPwShowPass(v => !v)}
+                        className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                        tabIndex={-1}
+                      >
+                        {pwShowPass ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                      </button>
+                    </div>
+                    <Button
+                      type="button"
+                      size="sm"
+                      onClick={handlePasswordLogin}
+                      disabled={pwLoading}
+                      className="bg-emerald-600 hover:bg-emerald-700 text-white"
+                    >
+                      {pwLoading ? <Loader2 className="mr-1.5 h-3 w-3 animate-spin" /> : <KeyRound className="mr-1.5 h-3 w-3" />}
+                      {t("add_pw_submit")}
+                    </Button>
+                  </div>
+                  {pwMsg && (
+                    <div className={`flex items-start gap-2 text-xs rounded px-2 py-1.5 border ${pwMsg.ok ? "bg-emerald-500/10 border-emerald-500/30 text-emerald-600" : "bg-destructive/10 border-destructive/30 text-destructive"}`}>
+                      {pwMsg.ok ? <CheckCircle2 className="h-3.5 w-3.5 mt-0.5 shrink-0" /> : <XCircle className="h-3.5 w-3.5 mt-0.5 shrink-0" />}
+                      <span>{pwMsg.text}</span>
+                    </div>
+                  )}
+                  <p className="text-[10px] text-muted-foreground/60">{t("add_pw_note")}</p>
+                </div>
+              )}
 
               {/* ── OAuth Login (only show for new accounts) — OUTSIDE <form> so Enter key can't submit ── */}
               {editingIndex === null && (
