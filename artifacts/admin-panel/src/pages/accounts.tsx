@@ -4,47 +4,80 @@ import { useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter, DialogClose } from "@/components/ui/dialog";
 import { useToast } from "@/hooks/use-toast";
-import { Trash2, Edit, Plus, CheckCircle2, XCircle, Clock, Power, FlaskConical, Loader2 } from "lucide-react";
+import { Trash2, Edit, Plus, CheckCircle2, XCircle, Clock, Power, FlaskConical, Loader2, ChevronDown, ChevronUp } from "lucide-react";
 import { JetbrainsAccount } from "@workspace/api-client-react/src/generated/api.schemas";
 import { Skeleton } from "@/components/ui/skeleton";
 
-type AccountWithEnabled = JetbrainsAccount & { enabled?: boolean };
+type ExtendedAccount = JetbrainsAccount & {
+  enabled?: boolean;
+  grazieAgent?: string;
+  jwtRefreshUrl?: string;
+  extraRefreshHeaders?: Record<string, string>;
+  extraRefreshBody?: Record<string, unknown>;
+};
 
+const DEFAULT_GRAZIE_AGENT = '{"name":"aia:pycharm","version":"251.26094.80.13:251.26094.141"}';
+const DEFAULT_JWT_URL = "https://api.jetbrains.ai/auth/jetbrains-jwt/provide-access/license/v2";
 const BASE = import.meta.env.BASE_URL?.replace(/\/$/, "") || "";
 
-async function testJwtRefresh(licenseId: string, authorization: string) {
+async function callTestJwtRefresh(params: {
+  licenseId: string;
+  authorization: string;
+  grazieAgent?: string;
+  jwtRefreshUrl?: string;
+  extraHeaders?: Record<string, string>;
+  extraBody?: Record<string, unknown>;
+}) {
   const res = await fetch(`${BASE}/api/admin/test-jwt-refresh`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ licenseId, authorization }),
+    body: JSON.stringify({
+      licenseId: params.licenseId,
+      authorization: params.authorization,
+      grazieAgent: params.grazieAgent || DEFAULT_GRAZIE_AGENT,
+      includeGrazieAgent: true,
+      url: params.jwtRefreshUrl || DEFAULT_JWT_URL,
+      extraHeaders: params.extraHeaders || {},
+      extraBody: params.extraBody || {},
+    }),
   });
   return res.json();
+}
+
+function parseJsonSafe(s: string): Record<string, unknown> | null {
+  try { return JSON.parse(s); } catch { return null; }
 }
 
 export default function Accounts() {
   const queryClient = useQueryClient();
   const { toast } = useToast();
-  
+
   const { data: accounts, isLoading } = useGetJetbrainsAccounts();
   const putAccounts = usePutJetbrainsAccounts();
-  
+
   const [isAddOpen, setIsAddOpen] = useState(false);
   const [editingIndex, setEditingIndex] = useState<number | null>(null);
   const [testingIndex, setTestingIndex] = useState<number | null>(null);
-  const [testResults, setTestResults] = useState<Record<number, { ok: boolean; status: number; detail: string }>>({});
+  const [testResults, setTestResults] = useState<Record<number, { ok: boolean; detail: string; debug?: unknown }>>({});
+  const [showAdvanced, setShowAdvanced] = useState(false);
 
-  const [formData, setFormData] = useState<AccountWithEnabled>({
+  const [formData, setFormData] = useState<ExtendedAccount & { extraHeadersRaw: string; extraBodyRaw: string }>({
     jwt: "",
     licenseId: "",
     authorization: "",
     enabled: true,
+    grazieAgent: "",
+    jwtRefreshUrl: "",
+    extraHeadersRaw: "",
+    extraBodyRaw: "",
   });
 
-  const saveAccounts = (newAccounts: AccountWithEnabled[], successMsg?: string) => {
+  const saveAccounts = (newAccounts: ExtendedAccount[], successMsg?: string) => {
     putAccounts.mutate({ data: newAccounts }, {
       onSuccess: () => {
         queryClient.invalidateQueries({ queryKey: getGetJetbrainsAccountsQueryKey() });
@@ -60,14 +93,21 @@ export default function Accounts() {
     e.preventDefault();
     if (!accounts) return;
 
-    const typedAccounts = accounts as AccountWithEnabled[];
-    let newAccounts = [...typedAccounts];
-    const accountToSave: AccountWithEnabled = {
-      ...formData,
+    const typedAccounts = accounts as ExtendedAccount[];
+    const newAccounts = [...typedAccounts];
+
+    const extraHeaders = parseJsonSafe(formData.extraHeadersRaw) as Record<string, string> | null;
+    const extraBody = parseJsonSafe(formData.extraBodyRaw);
+
+    const accountToSave: ExtendedAccount = {
       jwt: formData.jwt || null,
       licenseId: formData.licenseId || null,
       authorization: formData.authorization || null,
       enabled: formData.enabled !== false,
+      grazieAgent: formData.grazieAgent || undefined,
+      jwtRefreshUrl: formData.jwtRefreshUrl || undefined,
+      extraRefreshHeaders: extraHeaders || undefined,
+      extraRefreshBody: extraBody || undefined,
     };
 
     if (editingIndex !== null) {
@@ -82,7 +122,7 @@ export default function Accounts() {
         toast({ title: "Account Saved", description: "JetBrains account updated." });
         setIsAddOpen(false);
         setEditingIndex(null);
-        setFormData({ jwt: "", licenseId: "", authorization: "", enabled: true });
+        resetForm();
       },
       onError: (err: any) => {
         toast({ title: "Error", description: err.message || "Failed to save.", variant: "destructive" });
@@ -90,16 +130,21 @@ export default function Accounts() {
     });
   };
 
+  const resetForm = () => {
+    setFormData({ jwt: "", licenseId: "", authorization: "", enabled: true, grazieAgent: "", jwtRefreshUrl: "", extraHeadersRaw: "", extraBodyRaw: "" });
+    setShowAdvanced(false);
+  };
+
   const handleDelete = (index: number) => {
     if (!accounts) return;
     if (!confirm("Are you sure you want to delete this account?")) return;
-    const newAccounts = (accounts as AccountWithEnabled[]).filter((_, i) => i !== index);
+    const newAccounts = (accounts as ExtendedAccount[]).filter((_, i) => i !== index);
     saveAccounts(newAccounts, "Account Deleted");
   };
 
   const handleToggleEnabled = (index: number) => {
     if (!accounts) return;
-    const typedAccounts = accounts as AccountWithEnabled[];
+    const typedAccounts = accounts as ExtendedAccount[];
     const newAccounts = typedAccounts.map((acc, i) => {
       if (i !== index) return acc;
       return { ...acc, enabled: acc.enabled === false ? true : false };
@@ -109,29 +154,39 @@ export default function Accounts() {
   };
 
   const handleTestJwt = async (index: number) => {
-    const acc = (accounts as AccountWithEnabled[])?.[index];
+    const acc = (accounts as ExtendedAccount[])?.[index];
     if (!acc?.licenseId || !acc?.authorization) return;
     setTestingIndex(index);
     setTestResults(prev => { const n = { ...prev }; delete n[index]; return n; });
     try {
-      const result = await testJwtRefresh(acc.licenseId, acc.authorization);
+      const result = await callTestJwtRefresh({
+        licenseId: acc.licenseId,
+        authorization: acc.authorization,
+        grazieAgent: acc.grazieAgent,
+        jwtRefreshUrl: acc.jwtRefreshUrl,
+        extraHeaders: acc.extraRefreshHeaders,
+        extraBody: acc.extraRefreshBody,
+      });
       const data = result.data as Record<string, unknown> | undefined;
       const state = data?.state as string | undefined;
       const ok = result.ok && state === "PAID" && !!data?.token;
 
       const stateHints: Record<string, string> = {
         PAID: "Active paid license — JWT obtained successfully.",
-        TRIAL: "Trial license detected (state=TRIAL). The proxy only accepts PAID; trial accounts may not work.",
-        NONE: "No active license found (state=NONE). Possible causes: licenseId doesn't match the authorization token; the account has no JetBrains AI plan; or the authorization token is expired.",
-        EXPIRED: "License expired (state=EXPIRED). Renew the subscription.",
+        TRIAL: "Trial license (state=TRIAL). Proxy only accepts PAID; may not work.",
+        NONE: "state=NONE — No active JetBrains AI license on this licenseId, OR the authorization token doesn't match this licenseId. Compare 'Sent Request' below with your packet capture to identify missing headers/fields.",
+        EXPIRED: "License expired (state=EXPIRED).",
       };
 
       const raw = JSON.stringify(result.data, null, 2);
+      const debugJson = JSON.stringify(result.debug, null, 2);
       const hint = state ? (stateHints[state] ?? `Unknown state: ${state}`) : (result.error ?? "No response data");
-      const detail = ok ? `JWT obtained — state: ${state}` : `state=${state ?? "?"} — ${hint}\n\nFull response:\n${raw}`;
-      setTestResults(prev => ({ ...prev, [index]: { ok, status: result.status, detail } }));
+      const detail = ok
+        ? `JWT obtained — state: ${state}`
+        : `state=${state ?? "?"} — ${hint}\n\nResponse:\n${raw}\n\nSent Request (compare with your packet capture):\n${debugJson}`;
+      setTestResults(prev => ({ ...prev, [index]: { ok, detail, debug: result.debug } }));
     } catch (e: any) {
-      setTestResults(prev => ({ ...prev, [index]: { ok: false, status: 0, detail: e.message } }));
+      setTestResults(prev => ({ ...prev, [index]: { ok: false, detail: e.message } }));
     } finally {
       setTestingIndex(null);
     }
@@ -139,18 +194,23 @@ export default function Accounts() {
 
   const openEdit = (index: number) => {
     if (!accounts) return;
-    const acc = accounts[index] as AccountWithEnabled;
+    const acc = accounts[index] as ExtendedAccount;
     setFormData({
       jwt: acc.jwt || "",
       licenseId: acc.licenseId || "",
       authorization: acc.authorization || "",
       enabled: acc.enabled !== false,
+      grazieAgent: acc.grazieAgent || "",
+      jwtRefreshUrl: acc.jwtRefreshUrl || "",
+      extraHeadersRaw: acc.extraRefreshHeaders ? JSON.stringify(acc.extraRefreshHeaders, null, 2) : "",
+      extraBodyRaw: acc.extraRefreshBody ? JSON.stringify(acc.extraRefreshBody, null, 2) : "",
     });
+    setShowAdvanced(!!(acc.grazieAgent || acc.jwtRefreshUrl || acc.extraRefreshHeaders || acc.extraRefreshBody));
     setEditingIndex(index);
     setIsAddOpen(true);
   };
 
-  const getMode = (acc: AccountWithEnabled) => {
+  const getMode = (acc: ExtendedAccount) => {
     if (acc.jwt && !acc.licenseId) return "JWT Only";
     if (acc.licenseId && acc.authorization) return "License + Auth";
     if (acc.jwt && acc.licenseId) return "JWT + License";
@@ -162,8 +222,8 @@ export default function Accounts() {
     return new Date(ts * 1000).toLocaleString();
   };
 
-  const isEnabled = (acc: AccountWithEnabled) => acc.enabled !== false;
-  const isLicenseMode = (acc: AccountWithEnabled) => !!(acc.licenseId && acc.authorization);
+  const isEnabled = (acc: ExtendedAccount) => acc.enabled !== false;
+  const isLicenseMode = (acc: ExtendedAccount) => !!(acc.licenseId && acc.authorization);
 
   return (
     <div className="space-y-6">
@@ -172,13 +232,10 @@ export default function Accounts() {
           <h1 className="text-3xl font-bold tracking-tight">JetBrains Accounts</h1>
           <p className="text-muted-foreground mt-2">Manage auth configurations for the proxy pool. Only enabled accounts are used.</p>
         </div>
-        
+
         <Dialog open={isAddOpen} onOpenChange={(open) => {
           setIsAddOpen(open);
-          if (!open) {
-            setEditingIndex(null);
-            setFormData({ jwt: "", licenseId: "", authorization: "", enabled: true });
-          }
+          if (!open) { setEditingIndex(null); resetForm(); }
         }}>
           <DialogTrigger asChild>
             <Button data-testid="btn-add-account">
@@ -186,12 +243,13 @@ export default function Accounts() {
               Add Account
             </Button>
           </DialogTrigger>
-          <DialogContent className="sm:max-w-[520px]">
+          <DialogContent className="sm:max-w-[560px] max-h-[90vh] overflow-y-auto">
             <DialogHeader>
               <DialogTitle>{editingIndex !== null ? 'Edit Account' : 'Add Account'}</DialogTitle>
             </DialogHeader>
             <form onSubmit={handleSave} className="space-y-4 py-2">
 
+              {/* Mode A */}
               <div className="rounded-md border-2 border-primary/40 bg-primary/5 p-4 space-y-3">
                 <div className="flex items-center gap-2">
                   <span className="text-xs font-semibold text-primary uppercase tracking-wider">Mode A — Static JWT</span>
@@ -199,64 +257,120 @@ export default function Accounts() {
                 </div>
                 <div className="space-y-1.5">
                   <Label htmlFor="jwt">JWT Token (<code className="text-primary bg-primary/10 px-1 rounded text-xs">grazie-authenticate-jwt</code>)</Label>
-                  <Input 
-                    id="jwt" 
-                    placeholder="eyJhbGci..." 
-                    value={formData.jwt || ''} 
+                  <Input
+                    id="jwt"
+                    placeholder="eyJhbGci..."
+                    value={formData.jwt || ''}
                     onChange={e => setFormData({...formData, jwt: e.target.value})}
                     data-testid="input-jwt"
                     className="font-mono text-xs"
                   />
                   <div className="text-xs text-muted-foreground space-y-1 pt-0.5">
-                    <p>抓包时找 <strong>任意一条</strong> 发往 <code className="bg-muted px-1 rounded">api.jetbrains.ai</code> 的请求，复制请求头</p>
+                    <p>抓包找任意发往 <code className="bg-muted px-1 rounded">api.jetbrains.ai</code> 的请求，复制请求头</p>
                     <p><code className="bg-muted px-1 rounded font-mono">grazie-authenticate-jwt: eyJ...</code> 的值粘贴到这里。</p>
-                    <p className="text-amber-500/80">⚠ JWT 会定期过期（通常数小时），过期后需手动更新。</p>
+                    <p className="text-amber-500/80">⚠ JWT 会定期过期，需手动更新。</p>
                   </div>
                 </div>
               </div>
 
               <div className="relative py-1">
-                <div className="absolute inset-0 flex items-center">
-                  <span className="w-full border-t border-muted-foreground/20" />
-                </div>
+                <div className="absolute inset-0 flex items-center"><span className="w-full border-t border-muted-foreground/20" /></div>
                 <div className="relative flex justify-center text-xs uppercase">
                   <span className="bg-background px-2 text-muted-foreground">OR (高级 / Advanced)</span>
                 </div>
               </div>
 
+              {/* Mode B */}
               <div className="rounded-md border border-border bg-muted/30 p-4 space-y-3">
                 <div className="flex items-center gap-2">
                   <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Mode B — License (自动刷新 JWT)</span>
                 </div>
                 <p className="text-xs text-amber-500/80">
-                  ⚠ 需要抓包到 <code className="bg-muted px-1 rounded">POST /auth/jetbrains-jwt/provide-access/license/v2</code> 的请求才能获取正确凭证。如果测试返回 <code className="bg-muted px-1 rounded">state=NONE</code>，请改用 Mode A。
+                  ⚠ 需抓包 <code className="bg-muted px-1 rounded">POST /auth/jetbrains-jwt/provide-access/license/v2</code> 请求获取凭证。如果测试返回 <code className="bg-muted px-1 rounded">state=NONE</code>，展开下方「高级」调整参数后重测。
                 </p>
                 <div className="space-y-1.5">
                   <Label htmlFor="licenseId">License ID</Label>
-                  <Input 
-                    id="licenseId" 
-                    placeholder="WDVWPRAT3B" 
-                    value={formData.licenseId || ''} 
+                  <Input
+                    id="licenseId"
+                    placeholder="WDVWPRAT3B"
+                    value={formData.licenseId || ''}
                     onChange={e => setFormData({...formData, licenseId: e.target.value})}
                     data-testid="input-license"
                     className="font-mono"
                   />
-                  <p className="text-xs text-muted-foreground">来自 <code className="bg-muted px-1 rounded">/provide-access/license/v2</code> 请求体中的 <code className="bg-muted px-1 rounded">licenseId</code> 字段</p>
+                  <p className="text-xs text-muted-foreground">请求体中的 <code className="bg-muted px-1 rounded">licenseId</code> 字段</p>
                 </div>
                 <div className="space-y-1.5">
                   <Label htmlFor="authorization">Authorization Token</Label>
-                  <Input 
-                    id="authorization" 
+                  <Input
+                    id="authorization"
                     placeholder="eyJhbGci... (不含 Bearer 前缀)"
-                    value={formData.authorization || ''} 
+                    value={formData.authorization || ''}
                     onChange={e => setFormData({...formData, authorization: e.target.value})}
                     data-testid="input-auth"
                     className="font-mono text-xs"
                   />
                   <p className="text-xs text-muted-foreground">
-                    同一请求中 <code className="bg-muted px-1 rounded">Authorization: Bearer xxx</code> 的值，<strong>不要</strong>包含 <code className="bg-muted px-1 rounded">Bearer </code> 前缀。
+                    请求头 <code className="bg-muted px-1 rounded">Authorization: Bearer xxx</code> 的值，<strong>不含</strong> <code className="bg-muted px-1 rounded">Bearer </code>。
                   </p>
                 </div>
+
+                {/* Advanced section */}
+                <button
+                  type="button"
+                  className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors pt-1"
+                  onClick={() => setShowAdvanced(v => !v)}
+                >
+                  {showAdvanced ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
+                  高级选项 / Advanced — 自定义刷新请求
+                </button>
+
+                {showAdvanced && (
+                  <div className="space-y-3 border-t border-border pt-3">
+                    <div className="space-y-1.5">
+                      <Label htmlFor="grazieAgent">grazie-agent 头 (留空用默认值)</Label>
+                      <Input
+                        id="grazieAgent"
+                        placeholder={DEFAULT_GRAZIE_AGENT}
+                        value={formData.grazieAgent || ''}
+                        onChange={e => setFormData({...formData, grazieAgent: e.target.value})}
+                        className="font-mono text-xs"
+                      />
+                      <p className="text-xs text-muted-foreground">对比你的抓包，如 IDE 版本或名称不同请修改</p>
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label htmlFor="jwtRefreshUrl">JWT 刷新端点 URL (留空用默认值)</Label>
+                      <Input
+                        id="jwtRefreshUrl"
+                        placeholder={DEFAULT_JWT_URL}
+                        value={formData.jwtRefreshUrl || ''}
+                        onChange={e => setFormData({...formData, jwtRefreshUrl: e.target.value})}
+                        className="font-mono text-xs"
+                      />
+                      <p className="text-xs text-muted-foreground">如果你抓包发现 IDE 调用了不同的端点，填在这里</p>
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label htmlFor="extraHeaders">额外请求头 (JSON 对象，如 &ldquo;{'{}'}&rdquo;)</Label>
+                      <Textarea
+                        id="extraHeaders"
+                        placeholder={'{\n  "X-Machine-Id": "your-machine-id"\n}'}
+                        value={formData.extraHeadersRaw || ''}
+                        onChange={e => setFormData({...formData, extraHeadersRaw: e.target.value})}
+                        className="font-mono text-xs h-20"
+                      />
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label htmlFor="extraBody">额外请求体字段 (JSON 对象)</Label>
+                      <Textarea
+                        id="extraBody"
+                        placeholder={'{\n  "machineId": "your-machine-id"\n}'}
+                        value={formData.extraBodyRaw || ''}
+                        onChange={e => setFormData({...formData, extraBodyRaw: e.target.value})}
+                        className="font-mono text-xs h-20"
+                      />
+                    </div>
+                  </div>
+                )}
               </div>
 
               <div className="flex items-center gap-3 pt-1 border-t border-border">
@@ -267,7 +381,7 @@ export default function Accounts() {
                 />
                 <Label htmlFor="enabled" className="cursor-pointer">Account enabled</Label>
               </div>
-              
+
               <DialogFooter>
                 <DialogClose asChild>
                   <Button type="button" variant="outline">Cancel</Button>
@@ -295,7 +409,7 @@ export default function Accounts() {
         </Card>
       ) : (
         <div className="grid gap-4 grid-cols-1 xl:grid-cols-2">
-          {(accounts as AccountWithEnabled[])?.map((acc, i) => {
+          {(accounts as ExtendedAccount[])?.map((acc, i) => {
             const enabled = isEnabled(acc);
             const licenseMode = isLicenseMode(acc);
             const testResult = testResults[i];
@@ -385,10 +499,24 @@ export default function Accounts() {
                       </span>
                     </div>
                   )}
+                  {acc.grazieAgent && (
+                    <div className="grid grid-cols-[120px_1fr] items-center gap-2">
+                      <span className="text-muted-foreground font-mono text-xs">grazie-agent:</span>
+                      <span className="font-mono text-xs truncate text-muted-foreground">{acc.grazieAgent}</span>
+                    </div>
+                  )}
+                  {acc.jwtRefreshUrl && acc.jwtRefreshUrl !== DEFAULT_JWT_URL && (
+                    <div className="grid grid-cols-[120px_1fr] items-center gap-2">
+                      <span className="text-muted-foreground font-mono text-xs">JWT URL:</span>
+                      <span className="font-mono text-xs truncate text-muted-foreground">{acc.jwtRefreshUrl}</span>
+                    </div>
+                  )}
 
                   {testResult && (() => {
-                    const [summary, ...rest] = testResult.detail.split('\n\nFull response:\n');
-                    const raw = rest.join('\n\nFull response:\n');
+                    const [summary, ...rest] = testResult.detail.split('\n\nResponse:\n');
+                    const afterResponse = rest.join('\n\nResponse:\n');
+                    const [responseSection, ...debugRest] = afterResponse.split('\n\nSent Request (compare with your packet capture):\n');
+                    const debugSection = debugRest.join('\n\nSent Request (compare with your packet capture):\n');
                     return (
                       <div className={`mt-2 rounded-md border text-xs overflow-hidden ${testResult.ok ? 'border-primary/30 bg-primary/5 text-primary' : 'border-destructive/30 bg-destructive/5 text-destructive'}`}>
                         <div className="flex items-start gap-2 px-3 py-2">
@@ -397,10 +525,25 @@ export default function Accounts() {
                             : <XCircle className="h-3.5 w-3.5 shrink-0 mt-0.5" />}
                           <span className="break-words">{summary}</span>
                         </div>
-                        {raw && (
-                          <pre className="border-t border-current/20 px-3 py-2 overflow-x-auto whitespace-pre-wrap break-all opacity-80 font-mono leading-relaxed">
-                            {raw}
-                          </pre>
+                        {responseSection && (
+                          <details className="border-t border-current/20">
+                            <summary className="px-3 py-1.5 cursor-pointer opacity-70 hover:opacity-100 flex items-center gap-1">
+                              API 响应 Response
+                            </summary>
+                            <pre className="px-3 pb-2 overflow-x-auto whitespace-pre-wrap break-all opacity-80 font-mono leading-relaxed">
+                              {responseSection}
+                            </pre>
+                          </details>
+                        )}
+                        {debugSection && (
+                          <details className="border-t border-current/20">
+                            <summary className="px-3 py-1.5 cursor-pointer opacity-70 hover:opacity-100 flex items-center gap-1">
+                              📋 实际发出的请求 (对照你的抓包)
+                            </summary>
+                            <pre className="px-3 pb-2 overflow-x-auto whitespace-pre-wrap break-all opacity-80 font-mono leading-relaxed">
+                              {debugSection}
+                            </pre>
+                          </details>
                         )}
                       </div>
                     );

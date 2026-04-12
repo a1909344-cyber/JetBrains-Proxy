@@ -434,16 +434,26 @@ async def _refresh_jetbrains_jwt(account: dict):
         raw_auth = account["authorization"] or ""
         if raw_auth.lower().startswith("bearer "):
             raw_auth = raw_auth[7:]
+        grazie_agent = account.get("grazieAgent") or '{"name":"aia:pycharm","version":"251.26094.80.13:251.26094.141"}'
         headers = {
             "User-Agent": "ktor-client",
             "Content-Type": "application/json",
             "Accept-Charset": "UTF-8",
             "authorization": f"Bearer {raw_auth}",
+            "grazie-agent": grazie_agent,
         }
-        payload = {"licenseId": account["licenseId"]}
+        # Merge any extra headers the account config specifies
+        for k, v in (account.get("extraRefreshHeaders") or {}).items():
+            headers[k] = v
 
+        payload = {"licenseId": account["licenseId"]}
+        # Merge any extra body fields the account config specifies
+        for k, v in (account.get("extraRefreshBody") or {}).items():
+            payload[k] = v
+
+        jwt_url = account.get("jwtRefreshUrl") or "https://api.jetbrains.ai/auth/jetbrains-jwt/provide-access/license/v2"
         response = await http_client.post(
-            "https://api.jetbrains.ai/auth/jetbrains-jwt/provide-access/license/v2",
+            jwt_url,
             json=payload,
             headers=headers,
             timeout=DEFAULT_REQUEST_TIMEOUT,

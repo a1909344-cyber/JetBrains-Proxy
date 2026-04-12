@@ -180,35 +180,71 @@ router.post("/admin/proxy/test-chat", async (req, res) => {
 });
 
 router.post("/admin/test-jwt-refresh", async (req, res) => {
-  const { licenseId, authorization } = req.body as { licenseId?: string; authorization?: string };
+  const {
+    licenseId,
+    authorization,
+    extraHeaders = {},
+    extraBody = {},
+    grazieAgent = '{"name":"aia:pycharm","version":"251.26094.80.13:251.26094.141"}',
+    includeGrazieAgent = true,
+    url = "https://api.jetbrains.ai/auth/jetbrains-jwt/provide-access/license/v2",
+  } = req.body as {
+    licenseId?: string;
+    authorization?: string;
+    extraHeaders?: Record<string, string>;
+    extraBody?: Record<string, unknown>;
+    grazieAgent?: string;
+    includeGrazieAgent?: boolean;
+    url?: string;
+  };
+
   if (!licenseId || !authorization) {
     res.status(400).json({ error: "licenseId and authorization are required" });
     return;
   }
   let rawAuth = authorization.trim();
   if (rawAuth.toLowerCase().startsWith("bearer ")) rawAuth = rawAuth.slice(7);
+
+  const requestHeaders: Record<string, string> = {
+    "User-Agent": "ktor-client",
+    "Content-Type": "application/json",
+    "Accept-Charset": "UTF-8",
+    authorization: `Bearer ${rawAuth}`,
+    ...(includeGrazieAgent ? { "grazie-agent": grazieAgent } : {}),
+    ...extraHeaders,
+  };
+  const requestBody = { licenseId, ...extraBody };
+
   try {
-    const response = await fetch(
-      "https://api.jetbrains.ai/auth/jetbrains-jwt/provide-access/license/v2",
-      {
-        method: "POST",
-        headers: {
-          "User-Agent": "ktor-client",
-          "Content-Type": "application/json",
-          "Accept-Charset": "UTF-8",
-          authorization: `Bearer ${rawAuth}`,
-        },
-        body: JSON.stringify({ licenseId }),
-        signal: AbortSignal.timeout(15000),
-      }
-    );
+    const response = await fetch(url, {
+      method: "POST",
+      headers: requestHeaders,
+      body: JSON.stringify(requestBody),
+      signal: AbortSignal.timeout(15000),
+    });
     let data: unknown;
     try {
       data = await response.json();
     } catch {
       data = await response.text();
     }
-    res.json({ status: response.status, data, ok: response.ok });
+    // Echo back the request details so user can compare with their packet capture
+    const sentHeaders = { ...requestHeaders };
+    // redact the auth value
+    if (sentHeaders.authorization) {
+      const tok = sentHeaders.authorization.replace("Bearer ", "");
+      sentHeaders.authorization = `Bearer ${tok.slice(0, 8)}...(redacted)`;
+    }
+    res.json({
+      status: response.status,
+      data,
+      ok: response.ok,
+      debug: {
+        url,
+        sentHeaders,
+        sentBody: requestBody,
+      },
+    });
   } catch (e: unknown) {
     res.json({ status: 0, error: e instanceof Error ? e.message : String(e), ok: false });
   }
