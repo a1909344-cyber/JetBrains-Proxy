@@ -9,7 +9,7 @@ import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter, DialogClose } from "@/components/ui/dialog";
 import { useToast } from "@/hooks/use-toast";
-import { Trash2, Edit, Plus, CheckCircle2, XCircle, Clock, Power, FlaskConical, Loader2, ChevronDown, ChevronUp, BarChart2, RotateCcw } from "lucide-react";
+import { Trash2, Edit, Plus, CheckCircle2, XCircle, Clock, Power, FlaskConical, Loader2, ChevronDown, ChevronUp, BarChart2, RotateCcw, Zap, BookOpen, Copy, Check } from "lucide-react";
 import { JetbrainsAccount } from "@workspace/api-client-react/src/generated/api.schemas";
 import { Skeleton } from "@/components/ui/skeleton";
 
@@ -112,6 +112,59 @@ export default function Accounts() {
   const [testingIndex, setTestingIndex] = useState<number | null>(null);
   const [testResults, setTestResults] = useState<Record<number, { ok: boolean; detail: string; debug?: unknown }>>({});
   const [showAdvanced, setShowAdvanced] = useState(false);
+  const [showGuide, setShowGuide] = useState(false);
+  const [guideTab, setGuideTab] = useState<"capture" | "win" | "mac" | "linux">("capture");
+  const [importText, setImportText] = useState("");
+  const [importMsg, setImportMsg] = useState<{ ok: boolean; text: string } | null>(null);
+  const [copiedKey, setCopiedKey] = useState<string | null>(null);
+
+  const copyToClipboard = (text: string, key: string) => {
+    navigator.clipboard.writeText(text).then(() => {
+      setCopiedKey(key);
+      setTimeout(() => setCopiedKey(null), 2000);
+    });
+  };
+
+  const handleQuickImport = () => {
+    const text = importText.trim();
+    if (!text) { setImportMsg({ ok: false, text: "请粘贴内容后再点击解析。" }); return; }
+
+    let licenseId = "";
+    let authorization = "";
+    let jwt = "";
+
+    // --- Try to extract licenseId ---
+    const licenseMatch = text.match(/"licenseId"\s*:\s*"([^"]+)"/);
+    if (licenseMatch) licenseId = licenseMatch[1];
+
+    // --- Try to extract Authorization Bearer token ---
+    // Handles: cURL -H 'Authorization: Bearer xxx', raw HTTP header, or query param
+    const authMatch = text.match(/[Aa]uthorization[:\s'"]+Bearer\s+([A-Za-z0-9\-_.~+/]+=*)/);
+    if (authMatch) authorization = authMatch[1];
+
+    // --- Try to extract grazie-authenticate-jwt ---
+    const jwtMatch = text.match(/grazie-authenticate-jwt[:\s'"]+([A-Za-z0-9\-_.~+/]+=*)/);
+    if (jwtMatch) jwt = jwtMatch[1];
+
+    const found: string[] = [];
+    if (licenseId) found.push(`License ID: ${licenseId}`);
+    if (authorization) found.push(`Authorization Token (${authorization.slice(0, 12)}…)`);
+    if (jwt) found.push(`JWT Token (${jwt.slice(0, 12)}…)`);
+
+    if (found.length === 0) {
+      setImportMsg({ ok: false, text: "未能从粘贴内容中识别出任何字段。请确保包含 licenseId（JSON体）、Authorization: Bearer xxx（请求头）或 grazie-authenticate-jwt 字段。" });
+      return;
+    }
+
+    setFormData({
+      ...formData,
+      ...(licenseId ? { licenseId } : {}),
+      ...(authorization ? { authorization } : {}),
+      ...(jwt ? { jwt } : {}),
+    });
+    setImportText("");
+    setImportMsg({ ok: true, text: `已自动填充：${found.join("、")}` });
+  };
 
   const [formData, setFormData] = useState<ExtendedAccount & { extraHeadersRaw: string; extraBodyRaw: string }>({
     jwt: "",
@@ -295,7 +348,7 @@ export default function Accounts() {
 
         <Dialog open={isAddOpen} onOpenChange={(open) => {
           setIsAddOpen(open);
-          if (!open) { setEditingIndex(null); resetForm(); }
+          if (!open) { setEditingIndex(null); resetForm(); setImportText(""); setImportMsg(null); setShowGuide(false); }
         }}>
           <DialogTrigger asChild>
             <Button data-testid="btn-add-account">
@@ -308,6 +361,161 @@ export default function Accounts() {
               <DialogTitle>{editingIndex !== null ? 'Edit Account' : 'Add Account'}</DialogTitle>
             </DialogHeader>
             <form onSubmit={handleSave} className="space-y-4 py-2">
+
+              {/* ── Quick Import ── */}
+              <div className="rounded-md border-2 border-amber-500/40 bg-amber-500/5 p-4 space-y-3">
+                <div className="flex items-center gap-2">
+                  <Zap className="h-4 w-4 text-amber-500" />
+                  <span className="text-xs font-semibold text-amber-600 uppercase tracking-wider">快速导入 / Quick Import</span>
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  将抓包工具（Fiddler、Charles、Proxyman、Wireshark）里的原始 HTTP 请求或 cURL 命令粘贴到下方，系统会自动识别 License ID、Auth Token 和 JWT。
+                </p>
+                <Textarea
+                  placeholder={"粘贴原始 HTTP 请求或 cURL 命令，例如：\n\ncurl -X POST 'https://api.jetbrains.ai/auth/jetbrains-jwt/...' \\\n  -H 'Authorization: Bearer eyJhbGci...' \\\n  --data '{\"licenseId\":\"WDVWPRAT3B\"}'"}
+                  value={importText}
+                  onChange={e => { setImportText(e.target.value); setImportMsg(null); }}
+                  className="font-mono text-xs h-28 resize-none"
+                />
+                <div className="flex items-center gap-2">
+                  <Button type="button" size="sm" onClick={handleQuickImport} className="bg-amber-500 hover:bg-amber-600 text-white border-0">
+                    <Zap className="mr-1.5 h-3 w-3" /> 自动解析并填充
+                  </Button>
+                  {importMsg && (
+                    <span className={`text-xs ${importMsg.ok ? "text-primary" : "text-destructive"}`}>
+                      {importMsg.ok ? <CheckCircle2 className="inline h-3 w-3 mr-1" /> : <XCircle className="inline h-3 w-3 mr-1" />}
+                      {importMsg.text}
+                    </span>
+                  )}
+                </div>
+              </div>
+
+              {/* ── 获取凭据指南 ── */}
+              <div className="rounded-md border border-border bg-card overflow-hidden">
+                <button
+                  type="button"
+                  className="w-full flex items-center justify-between px-4 py-3 text-sm hover:bg-muted/30 transition-colors"
+                  onClick={() => setShowGuide(v => !v)}
+                >
+                  <span className="flex items-center gap-2 font-medium">
+                    <BookOpen className="h-4 w-4 text-muted-foreground" />
+                    如何获取 License ID 和 Auth Token？
+                  </span>
+                  {showGuide ? <ChevronUp className="h-4 w-4 text-muted-foreground" /> : <ChevronDown className="h-4 w-4 text-muted-foreground" />}
+                </button>
+                {showGuide && (
+                  <div className="border-t border-border">
+                    {/* Tab Bar */}
+                    <div className="flex border-b border-border text-xs font-medium">
+                      {(["capture", "win", "mac", "linux"] as const).map(tab => (
+                        <button
+                          key={tab}
+                          type="button"
+                          onClick={() => setGuideTab(tab)}
+                          className={`px-3 py-2 transition-colors ${guideTab === tab ? "border-b-2 border-primary text-primary bg-primary/5" : "text-muted-foreground hover:text-foreground"}`}
+                        >
+                          {tab === "capture" ? "🔍 抓包" : tab === "win" ? "🪟 Windows" : tab === "mac" ? "🍎 macOS" : "🐧 Linux"}
+                        </button>
+                      ))}
+                    </div>
+
+                    <div className="p-4 space-y-3 text-xs text-muted-foreground">
+                      {guideTab === "capture" && (
+                        <div className="space-y-3">
+                          <p className="text-foreground font-medium">使用抓包工具捕获 IDE 请求（推荐，最可靠）</p>
+                          <ol className="space-y-2 list-decimal list-inside">
+                            <li>安装 <strong>Proxyman</strong>（macOS，免费）、<strong>Fiddler Classic</strong>（Windows，免费）或 <strong>Charles Proxy</strong>（全平台）并配置系统代理</li>
+                            <li>打开抓包工具，开始捕获</li>
+                            <li>在 JetBrains IDE 中触发一次 AI 功能（AI Assistant 聊天或代码补全）</li>
+                            <li>在抓包工具中搜索 <code className="bg-muted px-1 rounded font-mono">api.jetbrains.ai</code></li>
+                            <li>找到 <code className="bg-muted px-1 rounded font-mono">POST /auth/jetbrains-jwt/provide-access/license/v2</code> 请求</li>
+                            <li>右键 → <strong>Copy as cURL</strong>（或「复制为 cURL」），粘贴到上方「快速导入」框中</li>
+                          </ol>
+                          <div className="rounded bg-muted/50 p-3 space-y-1 font-mono text-[11px] border border-border">
+                            <p className="text-muted-foreground">目标请求示例：</p>
+                            <p>POST https://api.jetbrains.ai/auth/jetbrains-jwt/provide-access/license/v2</p>
+                            <p className="text-primary">Authorization: Bearer <span className="opacity-60">eyJhbGciOiJSUzI1NiJ9...</span></p>
+                            <p className="text-amber-500">Body: {`{"licenseId":"WDVWPRAT3B"}`}</p>
+                          </div>
+                          <p className="text-amber-500/80">也可以直接找 <code className="bg-muted px-1 rounded">grazie-authenticate-jwt</code> 请求头（Mode A / JWT Only），但该 JWT 约 1 小时过期，需要手动刷新。</p>
+                        </div>
+                      )}
+
+                      {guideTab === "win" && (
+                        <div className="space-y-3">
+                          <p className="text-foreground font-medium">Windows — 从注册表提取 JetBrains 授权 Token</p>
+                          <p>JetBrains IDE 将 OAuth Token 存储在 Windows 注册表中。在 PowerShell 中运行：</p>
+                          <div className="relative">
+                            <pre className="rounded bg-muted/60 p-3 text-[11px] font-mono overflow-x-auto border border-border leading-relaxed whitespace-pre-wrap">
+{`# 在 PowerShell 中运行（需要先打开 IDE 并登录 JetBrains 账号）
+$basePath = "HKCU:\\Software\\JavaSoft\\Prefs\\jetbrains\\toolbox"
+if (Test-Path $basePath) {
+    Get-ItemProperty $basePath | Format-List *
+} else {
+    # 尝试通用路径
+    Get-ChildItem "HKCU:\\Software\\JavaSoft\\Prefs" -Recurse -ErrorAction SilentlyContinue |
+    Where-Object { $_.Name -match "jetbrains" } |
+    ForEach-Object { Get-ItemProperty $_.PSPath }
+}`}
+                            </pre>
+                            <button type="button" className="absolute top-2 right-2 text-muted-foreground hover:text-foreground p-1 rounded" onClick={() => copyToClipboard(`$basePath = "HKCU:\\Software\\JavaSoft\\Prefs\\jetbrains\\toolbox"\nif (Test-Path $basePath) {\n    Get-ItemProperty $basePath | Format-List *\n} else {\n    Get-ChildItem "HKCU:\\Software\\JavaSoft\\Prefs" -Recurse -ErrorAction SilentlyContinue |\n    Where-Object { $_.Name -match "jetbrains" } |\n    ForEach-Object { Get-ItemProperty $_.PSPath }\n}`, "win")}>
+                              {copiedKey === "win" ? <Check className="h-3.5 w-3.5 text-primary" /> : <Copy className="h-3.5 w-3.5" />}
+                            </button>
+                          </div>
+                          <p className="text-amber-500/80">⚠ Token 是机器绑定的加密数据，若无法直接读取，建议使用「抓包」方法。</p>
+                        </div>
+                      )}
+
+                      {guideTab === "mac" && (
+                        <div className="space-y-3">
+                          <p className="text-foreground font-medium">macOS — 从 Java Preferences 或 Keychain 提取</p>
+                          <p>在终端中运行以下命令查找 JetBrains 存储的 token：</p>
+                          <div className="relative">
+                            <pre className="rounded bg-muted/60 p-3 text-[11px] font-mono overflow-x-auto border border-border leading-relaxed whitespace-pre-wrap">
+{`# 方法1：查找 Java UserPrefs（~/.java/.userPrefs/）
+find ~/.java/.userPrefs -name "*.xml" 2>/dev/null | xargs grep -l "token\\|auth\\|license" 2>/dev/null | head -5
+
+# 方法2：查找 JetBrains 配置目录
+find ~/Library/Application\ Support/JetBrains -name "*.xml" 2>/dev/null | xargs grep -l "licenseId\\|accessToken" 2>/dev/null | head -10
+
+# 方法3：Keychain 搜索（可能需要密码授权）
+security find-generic-password -s "JetBrains" -g 2>&1 | grep -E "acct|svce|password"`}
+                            </pre>
+                            <button type="button" className="absolute top-2 right-2 text-muted-foreground hover:text-foreground p-1 rounded" onClick={() => copyToClipboard(`find ~/.java/.userPrefs -name "*.xml" 2>/dev/null | xargs grep -l "token|auth|license" 2>/dev/null | head -5`, "mac")}>
+                              {copiedKey === "mac" ? <Check className="h-3.5 w-3.5 text-primary" /> : <Copy className="h-3.5 w-3.5" />}
+                            </button>
+                          </div>
+                          <p>或使用 <strong>Proxyman</strong>（macOS 原生，界面友好）配置为系统代理后抓包，操作更简单。</p>
+                        </div>
+                      )}
+
+                      {guideTab === "linux" && (
+                        <div className="space-y-3">
+                          <p className="text-foreground font-medium">Linux — 从 Java UserPrefs 或配置文件提取</p>
+                          <p>JetBrains IDE 在 Linux 上将认证信息存储在 <code className="bg-muted px-1 rounded">~/.java/.userPrefs/</code> 目录下：</p>
+                          <div className="relative">
+                            <pre className="rounded bg-muted/60 p-3 text-[11px] font-mono overflow-x-auto border border-border leading-relaxed whitespace-pre-wrap">
+{`# 查找包含认证信息的 XML 文件
+find ~/.java/.userPrefs -name "*.xml" 2>/dev/null | xargs grep -l "token\\|auth\\|licenseId" 2>/dev/null
+
+# 查看内容（替换为上面找到的文件路径）
+cat ~/.java/.userPrefs/jetbrains/.../prefs.xml
+
+# 或在 JetBrains 配置目录中查找
+find ~/.config/JetBrains -name "*.xml" 2>/dev/null | xargs grep -l "licenseId\\|accessToken" 2>/dev/null | head -10`}
+                            </pre>
+                            <button type="button" className="absolute top-2 right-2 text-muted-foreground hover:text-foreground p-1 rounded" onClick={() => copyToClipboard(`find ~/.java/.userPrefs -name "*.xml" 2>/dev/null | xargs grep -l "token|auth|licenseId" 2>/dev/null\ncat ~/.java/.userPrefs/jetbrains/.../prefs.xml`, "linux")}>
+                              {copiedKey === "linux" ? <Check className="h-3.5 w-3.5 text-primary" /> : <Copy className="h-3.5 w-3.5" />}
+                            </button>
+                          </div>
+                          <p>找到 <code className="bg-muted px-1 rounded font-mono">licenseId</code> 和 <code className="bg-muted px-1 rounded font-mono">accessToken</code>（即 Authorization）后，粘贴到上方快速导入框即可。</p>
+                          <p className="text-amber-500/80">⚠ 若文件不存在或内容加密，建议使用 Wireshark 或 mitmproxy 抓包。</p>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
+              </div>
 
               {/* Mode A */}
               <div className="rounded-md border-2 border-primary/40 bg-primary/5 p-4 space-y-3">
