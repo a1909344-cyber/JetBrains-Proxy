@@ -8,11 +8,22 @@ import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter, DialogClose } from "@/components/ui/dialog";
 import { useToast } from "@/hooks/use-toast";
-import { Trash2, Edit, Plus, CheckCircle2, XCircle, Clock, Power } from "lucide-react";
+import { Trash2, Edit, Plus, CheckCircle2, XCircle, Clock, Power, FlaskConical, Loader2 } from "lucide-react";
 import { JetbrainsAccount } from "@workspace/api-client-react/src/generated/api.schemas";
 import { Skeleton } from "@/components/ui/skeleton";
 
 type AccountWithEnabled = JetbrainsAccount & { enabled?: boolean };
+
+const BASE = import.meta.env.BASE_URL?.replace(/\/$/, "") || "";
+
+async function testJwtRefresh(licenseId: string, authorization: string) {
+  const res = await fetch(`${BASE}/api/admin/test-jwt-refresh`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ licenseId, authorization }),
+  });
+  return res.json();
+}
 
 export default function Accounts() {
   const queryClient = useQueryClient();
@@ -23,7 +34,9 @@ export default function Accounts() {
   
   const [isAddOpen, setIsAddOpen] = useState(false);
   const [editingIndex, setEditingIndex] = useState<number | null>(null);
-  
+  const [testingIndex, setTestingIndex] = useState<number | null>(null);
+  const [testResults, setTestResults] = useState<Record<number, { ok: boolean; status: number; detail: string }>>({});
+
   const [formData, setFormData] = useState<AccountWithEnabled>({
     jwt: "",
     licenseId: "",
@@ -38,7 +51,7 @@ export default function Accounts() {
         toast({ title: successMsg || "Saved", description: "Accounts updated successfully." });
       },
       onError: (err: any) => {
-        toast({ title: "Error", description: err.message || "Failed to save accounts.", variant: "destructive" });
+        toast({ title: "Error", description: err.message || "Failed to save.", variant: "destructive" });
       }
     });
   };
@@ -95,6 +108,26 @@ export default function Accounts() {
     saveAccounts(newAccounts, isNowEnabled ? "Account Enabled" : "Account Disabled");
   };
 
+  const handleTestJwt = async (index: number) => {
+    const acc = (accounts as AccountWithEnabled[])?.[index];
+    if (!acc?.licenseId || !acc?.authorization) return;
+    setTestingIndex(index);
+    setTestResults(prev => { const n = { ...prev }; delete n[index]; return n; });
+    try {
+      const result = await testJwtRefresh(acc.licenseId, acc.authorization);
+      const data = result.data as Record<string, unknown> | undefined;
+      const ok = result.ok && data?.state === "PAID" && !!data?.token;
+      const detail = ok
+        ? `Success — JWT received (state: ${data?.state})`
+        : `Failed (HTTP ${result.status}): ${data?.state ?? result.error ?? JSON.stringify(result.data)}`;
+      setTestResults(prev => ({ ...prev, [index]: { ok, status: result.status, detail } }));
+    } catch (e: any) {
+      setTestResults(prev => ({ ...prev, [index]: { ok: false, status: 0, detail: e.message } }));
+    } finally {
+      setTestingIndex(null);
+    }
+  };
+
   const openEdit = (index: number) => {
     if (!accounts) return;
     const acc = accounts[index] as AccountWithEnabled;
@@ -109,8 +142,9 @@ export default function Accounts() {
   };
 
   const getMode = (acc: AccountWithEnabled) => {
-    if (acc.jwt) return "JWT Only";
+    if (acc.jwt && !acc.licenseId) return "JWT Only";
     if (acc.licenseId && acc.authorization) return "License + Auth";
+    if (acc.jwt && acc.licenseId) return "JWT + License";
     return "Incomplete";
   };
 
@@ -120,6 +154,7 @@ export default function Accounts() {
   };
 
   const isEnabled = (acc: AccountWithEnabled) => acc.enabled !== false;
+  const isLicenseMode = (acc: AccountWithEnabled) => !!(acc.licenseId && acc.authorization);
 
   return (
     <div className="space-y-6">
@@ -142,24 +177,29 @@ export default function Accounts() {
               Add Account
             </Button>
           </DialogTrigger>
-          <DialogContent className="sm:max-w-[500px]">
+          <DialogContent className="sm:max-w-[520px]">
             <DialogHeader>
               <DialogTitle>{editingIndex !== null ? 'Edit Account' : 'Add Account'}</DialogTitle>
             </DialogHeader>
-            <form onSubmit={handleSave} className="space-y-4 py-4">
-              <div className="space-y-2">
-                <Label htmlFor="jwt">JWT (Token)</Label>
-                <Input 
-                  id="jwt" 
-                  placeholder="eyJhbGci..." 
-                  value={formData.jwt || ''} 
-                  onChange={e => setFormData({...formData, jwt: e.target.value})}
-                  data-testid="input-jwt"
-                />
-                <p className="text-xs text-muted-foreground">Required for JWT-only mode</p>
+            <form onSubmit={handleSave} className="space-y-4 py-2">
+
+              <div className="rounded-md border border-border bg-muted/30 p-4 space-y-3">
+                <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Mode A — Static JWT</p>
+                <div className="space-y-1.5">
+                  <Label htmlFor="jwt">JWT Token</Label>
+                  <Input 
+                    id="jwt" 
+                    placeholder="eyJhbGci..." 
+                    value={formData.jwt || ''} 
+                    onChange={e => setFormData({...formData, jwt: e.target.value})}
+                    data-testid="input-jwt"
+                    className="font-mono text-xs"
+                  />
+                  <p className="text-xs text-muted-foreground">Paste the raw JWT from your JetBrains IDE session. Expires periodically.</p>
+                </div>
               </div>
-              
-              <div className="relative py-2">
+
+              <div className="relative py-1">
                 <div className="absolute inset-0 flex items-center">
                   <span className="w-full border-t border-muted-foreground/20" />
                 </div>
@@ -168,28 +208,37 @@ export default function Accounts() {
                 </div>
               </div>
 
-              <div className="space-y-2">
-                <Label htmlFor="licenseId">License ID</Label>
-                <Input 
-                  id="licenseId" 
-                  placeholder="XXXX-XXXX..." 
-                  value={formData.licenseId || ''} 
-                  onChange={e => setFormData({...formData, licenseId: e.target.value})}
-                  data-testid="input-license"
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="authorization">Authorization (Bearer Token)</Label>
-                <Input 
-                  id="authorization" 
-                  placeholder="Bearer ..." 
-                  value={formData.authorization || ''} 
-                  onChange={e => setFormData({...formData, authorization: e.target.value})}
-                  data-testid="input-auth"
-                />
+              <div className="rounded-md border border-border bg-muted/30 p-4 space-y-3">
+                <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Mode B — License (auto-refreshes JWT)</p>
+                <div className="space-y-1.5">
+                  <Label htmlFor="licenseId">License ID</Label>
+                  <Input 
+                    id="licenseId" 
+                    placeholder="WDVWPRAT3B" 
+                    value={formData.licenseId || ''} 
+                    onChange={e => setFormData({...formData, licenseId: e.target.value})}
+                    data-testid="input-license"
+                    className="font-mono"
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="authorization">Authorization Token</Label>
+                  <Input 
+                    id="authorization" 
+                    placeholder="eyJhbGci... (raw token, do NOT include 'Bearer ')"
+                    value={formData.authorization || ''} 
+                    onChange={e => setFormData({...formData, authorization: e.target.value})}
+                    data-testid="input-auth"
+                    className="font-mono text-xs"
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    Raw token only — do <strong>not</strong> include the <code className="bg-muted px-1 rounded">Bearer </code> prefix.
+                    Found in your JetBrains IDE credential store.
+                  </p>
+                </div>
               </div>
 
-              <div className="flex items-center gap-3 pt-2 border-t border-border">
+              <div className="flex items-center gap-3 pt-1 border-t border-border">
                 <Switch
                   id="enabled"
                   checked={formData.enabled !== false}
@@ -227,6 +276,8 @@ export default function Accounts() {
         <div className="grid gap-4 grid-cols-1 xl:grid-cols-2">
           {(accounts as AccountWithEnabled[])?.map((acc, i) => {
             const enabled = isEnabled(acc);
+            const licenseMode = isLicenseMode(acc);
+            const testResult = testResults[i];
             return (
               <Card
                 key={i}
@@ -258,7 +309,22 @@ export default function Accounts() {
                       )}
                     </CardDescription>
                   </div>
-                  <div className="flex gap-2 ml-2 shrink-0">
+                  <div className="flex gap-1.5 ml-2 shrink-0">
+                    {licenseMode && (
+                      <Button
+                        variant="outline"
+                        size="icon"
+                        onClick={() => handleTestJwt(i)}
+                        disabled={testingIndex === i}
+                        title="Test JWT refresh with these credentials"
+                        className="text-muted-foreground"
+                        data-testid={`btn-test-jwt-${i}`}
+                      >
+                        {testingIndex === i
+                          ? <Loader2 className="h-4 w-4 animate-spin" />
+                          : <FlaskConical className="h-4 w-4" />}
+                      </Button>
+                    )}
                     <Button
                       variant="outline"
                       size="icon"
@@ -281,16 +347,34 @@ export default function Accounts() {
                   {acc.jwt && (
                     <div className="grid grid-cols-[120px_1fr] items-center gap-2">
                       <span className="text-muted-foreground font-mono">JWT:</span>
-                      <span className="font-mono truncate">{acc.jwt.substring(0, 20)}...</span>
+                      <span className="font-mono truncate text-xs">{acc.jwt.substring(0, 24)}...</span>
                     </div>
                   )}
                   {acc.licenseId && (
                     <div className="grid grid-cols-[120px_1fr] items-center gap-2">
                       <span className="text-muted-foreground font-mono">License ID:</span>
-                      <span className="font-mono truncate">{acc.licenseId}</span>
+                      <span className="font-mono">{acc.licenseId}</span>
                     </div>
                   )}
-                  <div className="grid grid-cols-[120px_1fr] items-center gap-2 text-xs text-muted-foreground mt-4 border-t border-border pt-4">
+                  {acc.authorization && (
+                    <div className="grid grid-cols-[120px_1fr] items-center gap-2">
+                      <span className="text-muted-foreground font-mono">Auth Token:</span>
+                      <span className="font-mono text-xs truncate">
+                        {acc.authorization.length > 16 ? acc.authorization.substring(0, 16) + "..." : acc.authorization}
+                      </span>
+                    </div>
+                  )}
+
+                  {testResult && (
+                    <div className={`mt-2 flex items-start gap-2 rounded-md px-3 py-2 text-xs border ${testResult.ok ? 'border-primary/30 bg-primary/5 text-primary' : 'border-destructive/30 bg-destructive/5 text-destructive'}`}>
+                      {testResult.ok
+                        ? <CheckCircle2 className="h-3.5 w-3.5 shrink-0 mt-0.5" />
+                        : <XCircle className="h-3.5 w-3.5 shrink-0 mt-0.5" />}
+                      <span className="break-all">{testResult.detail}</span>
+                    </div>
+                  )}
+
+                  <div className="grid grid-cols-[120px_1fr] items-center gap-2 text-xs text-muted-foreground mt-3 border-t border-border pt-3">
                     <span className="flex items-center gap-1"><Clock className="h-3 w-3" /> Last Used:</span>
                     <span>{formatDate(acc.last_updated)}</span>
                   </div>

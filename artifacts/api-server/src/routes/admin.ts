@@ -179,4 +179,39 @@ router.post("/admin/proxy/test-chat", async (req, res) => {
   }
 });
 
+router.post("/admin/test-jwt-refresh", async (req, res) => {
+  const { licenseId, authorization } = req.body as { licenseId?: string; authorization?: string };
+  if (!licenseId || !authorization) {
+    res.status(400).json({ error: "licenseId and authorization are required" });
+    return;
+  }
+  let rawAuth = authorization.trim();
+  if (rawAuth.toLowerCase().startsWith("bearer ")) rawAuth = rawAuth.slice(7);
+  try {
+    const response = await fetch(
+      "https://api.jetbrains.ai/auth/jetbrains-jwt/provide-access/license/v2",
+      {
+        method: "POST",
+        headers: {
+          "User-Agent": "ktor-client",
+          "Content-Type": "application/json",
+          "Accept-Charset": "UTF-8",
+          authorization: `Bearer ${rawAuth}`,
+        },
+        body: JSON.stringify({ licenseId }),
+        signal: AbortSignal.timeout(15000),
+      }
+    );
+    let data: unknown;
+    try {
+      data = await response.json();
+    } catch {
+      data = await response.text();
+    }
+    res.json({ status: response.status, data, ok: response.ok });
+  } catch (e: unknown) {
+    res.json({ status: 0, error: e instanceof Error ? e.message : String(e), ok: false });
+  }
+});
+
 export default router;

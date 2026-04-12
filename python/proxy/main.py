@@ -431,11 +431,14 @@ async def _refresh_jetbrains_jwt(account: dict):
 
     print(f"正在为 licenseId {account['licenseId']} 刷新 JWT...")
     try:
+        raw_auth = account["authorization"] or ""
+        if raw_auth.lower().startswith("bearer "):
+            raw_auth = raw_auth[7:]
         headers = {
             "User-Agent": "ktor-client",
             "Content-Type": "application/json",
             "Accept-Charset": "UTF-8",
-            "authorization": f"Bearer {account['authorization']}",
+            "authorization": f"Bearer {raw_auth}",
         }
         payload = {"licenseId": account["licenseId"]}
 
