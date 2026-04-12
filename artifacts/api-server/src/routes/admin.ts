@@ -235,14 +235,18 @@ router.post("/admin/test-jwt-refresh", async (req, res) => {
       const tok = sentHeaders.authorization.replace("Bearer ", "");
       sentHeaders.authorization = `Bearer ${tok.slice(0, 8)}...(redacted)`;
     }
+    // JetBrains deprecated the `state` field (grazie-deprecated-info header confirms this).
+    // A token is returned for all valid accounts regardless of state value.
+    const hasToken = typeof data === "object" && data !== null && "token" in (data as object);
     res.json({
       status: response.status,
       data,
-      ok: response.ok,
+      ok: response.ok && hasToken,
       debug: {
         url,
         sentHeaders,
         sentBody: requestBody,
+        note: "JetBrains deprecated the `state` field. Token presence is the real success indicator.",
       },
     });
   } catch (e: unknown) {

@@ -169,21 +169,21 @@ export default function Accounts() {
       });
       const data = result.data as Record<string, unknown> | undefined;
       const state = data?.state as string | undefined;
-      const ok = result.ok && state === "PAID" && !!data?.token;
+      const hasToken = !!data?.token;
+      // JetBrains deprecated `state` — token presence is the real success indicator
+      const ok = result.ok && hasToken;
 
-      const stateHints: Record<string, string> = {
-        PAID: "Active paid license — JWT obtained successfully.",
-        TRIAL: "Trial license (state=TRIAL). Proxy only accepts PAID; may not work.",
-        NONE: "state=NONE — No active JetBrains AI license on this licenseId, OR the authorization token doesn't match this licenseId. Compare 'Sent Request' below with your packet capture to identify missing headers/fields.",
-        EXPIRED: "License expired (state=EXPIRED).",
-      };
+      const stateNote = state
+        ? `state=${state} (⚠ state字段已废弃，JetBrains 官方将用 is_internal 替代，不能作为判断依据)`
+        : "";
 
       const raw = JSON.stringify(result.data, null, 2);
       const debugJson = JSON.stringify(result.debug, null, 2);
-      const hint = state ? (stateHints[state] ?? `Unknown state: ${state}`) : (result.error ?? "No response data");
       const detail = ok
-        ? `JWT obtained — state: ${state}`
-        : `state=${state ?? "?"} — ${hint}\n\nResponse:\n${raw}\n\nSent Request (compare with your packet capture):\n${debugJson}`;
+        ? `JWT 获取成功！${stateNote ? "\n注意：" + stateNote : ""}`
+        : hasToken === false
+          ? `响应中无 token 字段 — 凭证可能无效\n\nResponse:\n${raw}\n\nSent Request:\n${debugJson}`
+          : `未知错误 (HTTP ${result.status})\n\nResponse:\n${raw}\n\nSent Request:\n${debugJson}`;
       setTestResults(prev => ({ ...prev, [index]: { ok, detail, debug: result.debug } }));
     } catch (e: any) {
       setTestResults(prev => ({ ...prev, [index]: { ok: false, detail: e.message } }));

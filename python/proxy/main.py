@@ -461,14 +461,18 @@ async def _refresh_jetbrains_jwt(account: dict):
         response.raise_for_status()
 
         data = response.json()
-        if data.get("state") == "PAID" and "token" in data:
+        # NOTE: JetBrains deprecated the `state` field (see grazie-deprecated-info header).
+        # A token is returned for all valid accounts regardless of state value.
+        # We accept the token whenever it is present.
+        if "token" in data:
             account["jwt"] = data["token"]
             account["last_updated"] = time.time()
-            print(f"成功刷新 licenseId {account['licenseId']} 的 JWT")
+            state = data.get("state", "UNKNOWN")
+            print(f"成功刷新 licenseId {account['licenseId']} 的 JWT (state={state}, note: state字段已废弃)")
             await _save_accounts_to_file()
         else:
-            print(f"刷新 JWT 失败: 无效的响应状态 {data.get('state')}")
-            raise HTTPException(status_code=500, detail=f"刷新 JWT 失败: {data}")
+            print(f"刷新 JWT 失败: 响应中无 token 字段, state={data.get('state')}")
+            raise HTTPException(status_code=500, detail=f"刷新 JWT 失败: 响应中无 token: {data}")
 
     except httpx.HTTPStatusError as e:
         print(f"刷新 JWT 时 HTTP 错误: {e.response.status_code} {e.response.text}")
