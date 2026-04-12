@@ -10,11 +10,12 @@ import { Trash2, Plus, Save, RotateCcw, CloudDownload, Loader2 } from "lucide-re
 import { Skeleton } from "@/components/ui/skeleton";
 import { ModelsConfig } from "@workspace/api-client-react/src/generated/api.schemas";
 import { useLang } from "@/lib/i18n";
+import { adminFetch } from "@/lib/api";
 
 const BASE = import.meta.env.BASE_URL?.replace(/\/$/, "") || "";
 
 async function fetchUpstreamModels(): Promise<{ profiles: string[]; raw: unknown; url: string }> {
-  const res = await fetch(`${BASE}/api/admin/proxy/fetch-upstream-models`, { method: "POST" });
+  const res = await adminFetch(`${BASE}/api/admin/proxy/fetch-upstream-models`, { method: "POST" });
   if (!res.ok) {
     const err = await res.json().catch(() => ({ error: res.statusText }));
     throw new Error((err as any).error || res.statusText);

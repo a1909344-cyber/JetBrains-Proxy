@@ -13,6 +13,7 @@ import { Trash2, Edit, Plus, CheckCircle2, XCircle, Clock, Power, FlaskConical, 
 import { JetbrainsAccount } from "@workspace/api-client-react/src/generated/api.schemas";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useLang } from "@/lib/i18n";
+import { adminFetch } from "@/lib/api";
 
 type ExtendedAccount = JetbrainsAccount & {
   enabled?: boolean;
@@ -58,7 +59,7 @@ async function callTestJwtRefresh(params: {
   extraHeaders?: Record<string, string>;
   extraBody?: Record<string, unknown>;
 }) {
-  const res = await fetch(`${BASE}/api/admin/test-jwt-refresh`, {
+  const res = await adminFetch(`${BASE}/api/admin/test-jwt-refresh`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
@@ -89,7 +90,7 @@ export default function Accounts() {
   const { data: statsData, refetch: refetchStats } = useQuery<Record<string, AccountStats>>({
     queryKey: ["admin-stats"],
     queryFn: async () => {
-      const res = await fetch(`${BASE}/api/admin/stats`);
+      const res = await adminFetch(`${BASE}/api/admin/stats`);
       return res.ok ? res.json() : {};
     },
     refetchInterval: 10000,
@@ -99,7 +100,7 @@ export default function Accounts() {
   const handleResetStats = async () => {
     setResettingStats(true);
     try {
-      await fetch(`${BASE}/api/admin/stats/reset`, { method: "POST" });
+      await adminFetch(`${BASE}/api/admin/stats/reset`, { method: "POST" });
       refetchStats();
       toast({ title: t("acc_stats_reset_ok") });
     } catch {
@@ -133,7 +134,7 @@ export default function Accounts() {
     setPwLoading(true);
     setPwMsg(null);
     try {
-      const res = await fetch(`${BASE}/api/admin/password-login`, {
+      const res = await adminFetch(`${BASE}/api/admin/password-login`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email: pwEmail.trim(), password: pwPassword.trim() }),
@@ -171,7 +172,7 @@ export default function Accounts() {
     setOauthMsg(null);
     setOauthUrl(null);
     try {
-      const res = await fetch("/api/admin/oauth/start");
+      const res = await adminFetch(`${BASE}/api/admin/oauth/start`);
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Failed to get OAuth URL");
       setOauthUrl(data.url);
@@ -188,7 +189,7 @@ export default function Accounts() {
     setOauthLoading(true);
     setOauthMsg(null);
     try {
-      const res = await fetch("/api/admin/oauth/callback", {
+      const res = await adminFetch(`${BASE}/api/admin/oauth/callback`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ callback_url: oauthCallbackUrl.trim(), license_id: oauthLicenseId.trim() }),
