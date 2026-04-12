@@ -475,8 +475,12 @@ async def get_next_jetbrains_account() -> dict:
         raise HTTPException(status_code=503, detail="服务不可用: 未配置 JetBrains 账户")
 
     async with account_rotation_lock:
+        n = len(JETBRAINS_ACCOUNTS)
+        if current_account_index >= n:
+            print(f"[DEBUG] index {current_account_index} out of bounds (len={n}), resetting to 0")
+            current_account_index = 0
         start_index = current_account_index
-        for _ in range(len(JETBRAINS_ACCOUNTS)):
+        for _ in range(n):
             account = JETBRAINS_ACCOUNTS[current_account_index]
             current_account_index = (current_account_index + 1) % len(
                 JETBRAINS_ACCOUNTS
