@@ -26,6 +26,8 @@ file_write_lock = asyncio.Lock()
 models_data: Dict[str, Any] = {}
 anthropic_model_mappings: Dict[str, str] = {}
 http_client: Optional[httpx.AsyncClient] = None
+usage_stats: Dict[str, Any] = {}
+stats_write_lock = asyncio.Lock()
 
 # Pydantic Models
 class ChatMessage(BaseModel):
@@ -232,6 +234,103 @@ async def _save_accounts_to_file():
                 await f.write(json.dumps(JETBRAINS_ACCOUNTS, indent=2))
         except Exception as e:
             print(f"保存 jetbrainsai.json 文件时出错: {e}")
+
+
+# ── Usage stats helpers ──────────────────────────────────────────────────────
+
+def _account_key(account: dict) -> str:
+    """生成账户的唯一统计键"""
+    if account.get("licenseId"):
+        return f"license:{account['licenseId']}"
+    jwt = account.get("jwt") or ""
+    return f"jwt:{jwt[:16]}"
+
+
+def _account_label(account: dict) -> str:
+    if account.get("licenseId"):
+        return account["licenseId"]
+    jwt = account.get("jwt") or ""
+    return f"JWT …{jwt[-8:]}" if len(jwt) > 8 else jwt
+
+
+def load_usage_stats():
+    """从 usage_stats.json 加载使用统计"""
+    global usage_stats
+    try:
+        with open("usage_stats.json", "r", encoding="utf-8") as f:
+            usage_stats = json.load(f)
+    except FileNotFoundError:
+        usage_stats = {}
+    except Exception as e:
+        print(f"加载 usage_stats.json 时出错: {e}")
+        usage_stats = {}
+
+
+async def _save_usage_stats():
+    """将使用统计保存到 usage_stats.json"""
+    async with stats_write_lock:
+        try:
+            async with aiofiles.open("usage_stats.json", "w", encoding="utf-8") as f:
+                await f.write(json.dumps(usage_stats, indent=2))
+        except Exception as e:
+            print(f"保存 usage_stats.json 时出错: {e}")
+
+
+async def _record_usage(account: dict, input_chars: int, output_chars: int):
+    """增加账户的调用统计并异步保存"""
+    key = _account_key(account)
+    if key not in usage_stats:
+        usage_stats[key] = {
+            "label": _account_label(account),
+            "call_count": 0,
+            "input_chars": 0,
+            "output_chars": 0,
+            "last_call_at": 0.0,
+        }
+    entry = usage_stats[key]
+    entry["label"] = _account_label(account)
+    entry["call_count"] += 1
+    entry["input_chars"] += input_chars
+    entry["output_chars"] += output_chars
+    entry["last_call_at"] = time.time()
+    asyncio.create_task(_save_usage_stats())
+
+
+async def _tracking_stream(
+    stream: AsyncGenerator[str, None],
+    account: dict,
+    input_chars: int,
+) -> AsyncGenerator[str, None]:
+    """包装 openai SSE 流，在结束时记录 token 使用统计"""
+    output_chars = 0
+    try:
+        async for line in stream:
+            if line.startswith("data: ") and line.strip() != "data: [DONE]":
+                try:
+                    data = json.loads(line[6:])
+                    if data.get("choices"):
+                        delta = data["choices"][0].get("delta", {})
+                        if delta.get("content"):
+                            output_chars += len(delta["content"])
+                except Exception:
+                    pass
+            yield line
+    finally:
+        await _record_usage(account, input_chars, output_chars)
+
+
+def _request_input_chars(messages: list) -> int:
+    """估算请求消息的字符数"""
+    total = 0
+    for m in messages:
+        c = m.content if isinstance(m, object) and hasattr(m, "content") else (m.get("content") if isinstance(m, dict) else "")
+        if isinstance(c, str):
+            total += len(c)
+        elif isinstance(c, list):
+            for item in c:
+                if isinstance(item, dict) and item.get("type") == "text":
+                    total += len(item.get("text", ""))
+    return total
 
 
 def load_client_api_keys():
@@ -543,6 +642,7 @@ async def startup():
     models_data = load_models()
     load_client_api_keys()
     load_jetbrains_accounts()
+    load_usage_stats()
     http_client = httpx.AsyncClient(timeout=None)
     print("JetBrains AI OpenAI Compatible API 服务器已启动")
 
@@ -775,6 +875,7 @@ async def chat_completions(
 
     account = await get_next_jetbrains_account()
     auth_token = account["jwt"]
+    _input_chars = _request_input_chars(request.messages)
 
     # 从历史消息中创建 tool_call_id 到 function_name 的映射
     tool_id_to_func_name_map = {}
@@ -891,11 +992,13 @@ async def chat_completions(
 
     # 返回流式或非流式响应
     if request.stream:
-        return StreamingResponse(openai_sse_stream, media_type="text/event-stream")
-    else:
-        return await aggregate_stream_for_non_stream_response(
-            openai_sse_stream, request.model
+        return StreamingResponse(
+            _tracking_stream(openai_sse_stream, account, _input_chars),
+            media_type="text/event-stream",
         )
+    else:
+        tracked = _tracking_stream(openai_sse_stream, account, _input_chars)
+        return await aggregate_stream_for_non_stream_response(tracked, request.model)
 
 
 def convert_anthropic_to_openai(
@@ -1153,6 +1256,7 @@ async def messages_completions(
 
     account = await get_next_jetbrains_account()
     auth_token = account["jwt"]
+    _input_chars = _request_input_chars(openai_request.messages)
 
     tool_id_to_func_name_map = {}
     for m in openai_request.messages:
@@ -1249,15 +1353,16 @@ async def messages_completions(
     openai_sse_stream = openai_stream_adapter(
         api_stream_generator(), openai_request.model, tools or []
     )
+    tracked_stream = _tracking_stream(openai_sse_stream, account, _input_chars)
 
     if openai_request.stream:
         anthropic_stream = openai_to_anthropic_stream_adapter(
-            openai_sse_stream, openai_request.model
+            tracked_stream, openai_request.model
         )
         return StreamingResponse(anthropic_stream, media_type="text/event-stream")
     else:
         openai_response = await aggregate_stream_for_non_stream_response(
-            openai_sse_stream, openai_request.model
+            tracked_stream, openai_request.model
         )
         return convert_openai_to_anthropic_response(openai_response)
 

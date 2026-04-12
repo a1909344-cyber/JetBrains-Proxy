@@ -96,6 +96,16 @@ router.put("/admin/config/client-keys", async (req, res) => {
   res.json({ success: true });
 });
 
+router.get("/admin/stats", (req, res) => {
+  const data = readJson("usage_stats.json");
+  res.json(data ?? {});
+});
+
+router.post("/admin/stats/reset", (req, res) => {
+  writeJson("usage_stats.json", {});
+  res.json({ success: true });
+});
+
 router.get("/admin/config/models", (req, res) => {
   const data = readJson("models.json");
   res.json(data ?? { models: [], anthropic_model_mappings: {} });

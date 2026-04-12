@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useGetJetbrainsAccounts, usePutJetbrainsAccounts, getGetJetbrainsAccountsQueryKey } from "@workspace/api-client-react";
-import { useQueryClient } from "@tanstack/react-query";
+import { useQueryClient, useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -9,7 +9,7 @@ import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter, DialogClose } from "@/components/ui/dialog";
 import { useToast } from "@/hooks/use-toast";
-import { Trash2, Edit, Plus, CheckCircle2, XCircle, Clock, Power, FlaskConical, Loader2, ChevronDown, ChevronUp } from "lucide-react";
+import { Trash2, Edit, Plus, CheckCircle2, XCircle, Clock, Power, FlaskConical, Loader2, ChevronDown, ChevronUp, BarChart2, RotateCcw } from "lucide-react";
 import { JetbrainsAccount } from "@workspace/api-client-react/src/generated/api.schemas";
 import { Skeleton } from "@/components/ui/skeleton";
 
@@ -24,6 +24,30 @@ type ExtendedAccount = JetbrainsAccount & {
 const DEFAULT_GRAZIE_AGENT = '{"name":"aia:pycharm","version":"251.26094.80.13:251.26094.141"}';
 const DEFAULT_JWT_URL = "https://api.jetbrains.ai/auth/jetbrains-jwt/provide-access/license/v2";
 const BASE = import.meta.env.BASE_URL?.replace(/\/$/, "") || "";
+
+type AccountStats = {
+  label: string;
+  call_count: number;
+  input_chars: number;
+  output_chars: number;
+  last_call_at: number;
+};
+
+function accountKey(acc: ExtendedAccount): string {
+  if (acc.licenseId) return `license:${acc.licenseId}`;
+  const jwt = acc.jwt || "";
+  return `jwt:${jwt.slice(0, 16)}`;
+}
+
+function fmtNum(n: number): string {
+  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
+  if (n >= 1_000) return `${(n / 1_000).toFixed(1)}K`;
+  return String(n);
+}
+
+function estTokens(chars: number): string {
+  return fmtNum(Math.round(chars / 4));
+}
 
 async function callTestJwtRefresh(params: {
   licenseId: string;
@@ -59,6 +83,29 @@ export default function Accounts() {
 
   const { data: accounts, isLoading } = useGetJetbrainsAccounts();
   const putAccounts = usePutJetbrainsAccounts();
+
+  const { data: statsData, refetch: refetchStats } = useQuery<Record<string, AccountStats>>({
+    queryKey: ["admin-stats"],
+    queryFn: async () => {
+      const res = await fetch(`${BASE}/api/admin/stats`);
+      return res.ok ? res.json() : {};
+    },
+    refetchInterval: 10000,
+  });
+
+  const [resettingStats, setResettingStats] = useState(false);
+  const handleResetStats = async () => {
+    setResettingStats(true);
+    try {
+      await fetch(`${BASE}/api/admin/stats/reset`, { method: "POST" });
+      refetchStats();
+      toast({ title: "统计已重置", description: "所有账户的调用统计已清零。" });
+    } catch {
+      toast({ title: "重置失败", variant: "destructive" });
+    } finally {
+      setResettingStats(false);
+    }
+  };
 
   const [isAddOpen, setIsAddOpen] = useState(false);
   const [editingIndex, setEditingIndex] = useState<number | null>(null);
@@ -233,6 +280,19 @@ export default function Accounts() {
           <p className="text-muted-foreground mt-2">Manage auth configurations for the proxy pool. Only enabled accounts are used.</p>
         </div>
 
+        <div className="flex gap-2 items-center">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={handleResetStats}
+            disabled={resettingStats}
+            title="重置所有账户的调用统计"
+            data-testid="btn-reset-stats"
+          >
+            {resettingStats ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <RotateCcw className="mr-2 h-4 w-4" />}
+            重置统计
+          </Button>
+
         <Dialog open={isAddOpen} onOpenChange={(open) => {
           setIsAddOpen(open);
           if (!open) { setEditingIndex(null); resetForm(); }
@@ -393,6 +453,7 @@ export default function Accounts() {
             </form>
           </DialogContent>
         </Dialog>
+        </div>
       </div>
 
       {isLoading ? (
@@ -549,10 +610,40 @@ export default function Accounts() {
                     );
                   })()}
 
-                  <div className="grid grid-cols-[120px_1fr] items-center gap-2 text-xs text-muted-foreground mt-3 border-t border-border pt-3">
-                    <span className="flex items-center gap-1"><Clock className="h-3 w-3" /> Last Used:</span>
-                    <span>{formatDate(acc.last_updated)}</span>
-                  </div>
+                  {(() => {
+                    const key = accountKey(acc);
+                    const s = statsData?.[key];
+                    return (
+                      <div className="mt-3 border-t border-border pt-3 space-y-1.5">
+                        <div className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground mb-1">
+                          <BarChart2 className="h-3 w-3" />
+                          使用统计
+                        </div>
+                        {s ? (
+                          <div className="grid grid-cols-3 gap-2">
+                            <div className="rounded-md bg-muted/40 px-2 py-1.5 text-center">
+                              <p className="text-lg font-semibold tabular-nums">{fmtNum(s.call_count)}</p>
+                              <p className="text-xs text-muted-foreground">调用次数</p>
+                            </div>
+                            <div className="rounded-md bg-muted/40 px-2 py-1.5 text-center">
+                              <p className="text-lg font-semibold tabular-nums">{estTokens(s.input_chars)}</p>
+                              <p className="text-xs text-muted-foreground">输入 Token (估)</p>
+                            </div>
+                            <div className="rounded-md bg-muted/40 px-2 py-1.5 text-center">
+                              <p className="text-lg font-semibold tabular-nums">{estTokens(s.output_chars)}</p>
+                              <p className="text-xs text-muted-foreground">输出 Token (估)</p>
+                            </div>
+                          </div>
+                        ) : (
+                          <p className="text-xs text-muted-foreground italic">暂无记录</p>
+                        )}
+                        <div className="grid grid-cols-[120px_1fr] items-center gap-2 text-xs text-muted-foreground pt-1">
+                          <span className="flex items-center gap-1"><Clock className="h-3 w-3" /> Last Used:</span>
+                          <span>{s ? formatDate(s.last_call_at) : formatDate(acc.last_updated)}</span>
+                        </div>
+                      </div>
+                    );
+                  })()}
                 </CardContent>
               </Card>
             );
