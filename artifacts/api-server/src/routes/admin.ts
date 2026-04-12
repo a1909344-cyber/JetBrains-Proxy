@@ -179,6 +179,58 @@ router.post("/admin/proxy/test-chat", async (req, res) => {
   }
 });
 
+router.post("/admin/proxy/fetch-upstream-models", async (req, res) => {
+  // Get JWT from first available account
+  const accounts = readJson("jetbrainsai.json") as unknown[] | null;
+  const accountList = Array.isArray(accounts) ? accounts : [];
+  const activeAccount = accountList.find((a: any) => a.enabled !== false && a.jwt);
+  if (!activeAccount) {
+    res.status(400).json({ error: "No active account with a JWT found. Ensure an enabled account has a valid JWT (refresh one first on the Accounts page)." });
+    return;
+  }
+  const jwt = (activeAccount as any).jwt as string;
+  const grazieAgent = (activeAccount as any).grazieAgent || '{"name":"aia:pycharm","version":"251.26094.80.13:251.26094.141"}';
+
+  const endpoints = [
+    "https://api.jetbrains.ai/user/v5/llm/profiles",
+    "https://api.jetbrains.ai/user/v5/llm/chat/v4/profiles",
+    "https://api.jetbrains.ai/api/v5/user/llm/profiles",
+  ];
+
+  const headers = {
+    "User-Agent": "ktor-client",
+    "Accept": "application/json",
+    "Accept-Charset": "UTF-8",
+    "grazie-agent": grazieAgent,
+    "grazie-authenticate-jwt": jwt,
+  };
+
+  for (const url of endpoints) {
+    try {
+      const response = await fetch(url, { headers, signal: AbortSignal.timeout(10000) });
+      if (!response.ok) continue;
+      const data = await response.json() as unknown;
+      // Parse whichever profile format we get back
+      let profiles: string[] = [];
+      if (Array.isArray(data)) {
+        profiles = (data as any[]).map((p: any) => p.id ?? p.name ?? p.profile ?? String(p)).filter(Boolean);
+      } else if (typeof data === "object" && data !== null) {
+        const d = data as Record<string, unknown>;
+        if (Array.isArray(d.profiles)) {
+          profiles = (d.profiles as any[]).map((p: any) => p.id ?? p.name ?? String(p)).filter(Boolean);
+        } else if (Array.isArray(d.data)) {
+          profiles = (d.data as any[]).map((p: any) => p.id ?? p.name ?? String(p)).filter(Boolean);
+        }
+      }
+      res.json({ profiles, raw: data, url });
+      return;
+    } catch {
+      // try next endpoint
+    }
+  }
+  res.status(502).json({ error: "Could not reach JetBrains model list endpoint. The JWT may be expired — try refreshing it on the Accounts page." });
+});
+
 router.post("/admin/test-jwt-refresh", async (req, res) => {
   const {
     licenseId,
