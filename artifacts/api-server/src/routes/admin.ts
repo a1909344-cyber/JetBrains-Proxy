@@ -426,7 +426,18 @@ class CookieJar {
 
   get(name: string): string | undefined { return this.cookies.get(name); }
   entries(): IterableIterator<[string, string]> { return this.cookies.entries(); }
+
+  // Find first cookie whose name contains a substring (case-insensitive)
+  findBySubstring(sub: string): string | undefined {
+    const lower = sub.toLowerCase();
+    for (const [name, value] of this.cookies) {
+      if (name.toLowerCase().includes(lower)) return value;
+    }
+    return undefined;
+  }
 }
+
+const JB_UA = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36";
 
 async function jbPasswordLogin(email: string, password: string): Promise<{
   id_token: string; refresh_token: string; cookies: Record<string, string>; email: string;
@@ -434,19 +445,26 @@ async function jbPasswordLogin(email: string, password: string): Promise<{
   const jar = new CookieJar();
   const T = 30000;
 
-  // Step 1: GET /login → get XSRF cookie
+  // Step 1: GET /login → get XSRF cookie (_st-JBA)
   const loginPage = await fetch(`${JB_BASE}/login`, {
-    headers: { "Accept": "text/html" },
+    headers: {
+      "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+      "User-Agent": JB_UA,
+    },
     redirect: "follow",
     signal: AbortSignal.timeout(T),
   });
   jar.updateFromResponse(loginPage.headers);
-  const xsrf = jar.get("_st") ?? jar.get("XSRF-TOKEN") ?? "";
 
+  // jsonHeaders always reads the latest _st-JBA cookie value (JetBrains may rotate it)
   function jsonHeaders(extra: Record<string, string> = {}): Record<string, string> {
+    const xsrf = jar.findBySubstring("_st") ?? "";
     return {
       "Content-Type": "application/json",
       "X-Requested-With": "XMLHttpRequest",
+      "User-Agent": JB_UA,
+      "Origin": JB_BASE,
+      "Referer": `${JB_BASE}/login`,
       "Cookie": jar.toHeader(),
       ...(xsrf ? { "X-XSRF-TOKEN": xsrf } : {}),
       ...extra,
@@ -461,31 +479,43 @@ async function jbPasswordLogin(email: string, password: string): Promise<{
     signal: AbortSignal.timeout(T),
   });
   jar.updateFromResponse(sessionRes.headers);
-  if (!sessionRes.ok) throw new Error(`Session creation failed: ${sessionRes.status}`);
+  if (!sessionRes.ok) {
+    const body = await sessionRes.text().catch(() => "");
+    throw new Error(`Session creation failed: ${sessionRes.status} ${body.slice(0, 200)}`);
+  }
   const sessionData = await sessionRes.json() as { id: string };
   const sid = sessionData.id;
 
   // Step 3: Submit email
   const emailRes = await fetch(`${JB_BASE}/api/auth/sessions/${sid}/email/login`, {
     method: "POST",
-    headers: jsonHeaders(),
+    headers: jsonHeaders({ "Referer": `${JB_BASE}/login` }),
     body: JSON.stringify({ email }),
     signal: AbortSignal.timeout(T),
   });
   jar.updateFromResponse(emailRes.headers);
+  if (!emailRes.ok) {
+    const body = await emailRes.text().catch(() => "");
+    throw new Error(`Email submit failed: ${emailRes.status} ${body.slice(0, 200)}`);
+  }
   const emailData = await emailRes.json() as { state: string };
   if (emailData.state !== "PASSWORD_REQUIRED") {
-    throw new Error(`Unexpected state after email submit: ${emailData.state}`);
+    throw new Error(`Unexpected state after email submit: ${JSON.stringify(emailData)}`);
   }
 
   // Step 4: Submit password
   const pwRes = await fetch(`${JB_BASE}/api/auth/sessions/${sid}/password`, {
     method: "POST",
-    headers: jsonHeaders(),
+    headers: jsonHeaders({ "Referer": `${JB_BASE}/login` }),
     body: JSON.stringify({ password }),
     signal: AbortSignal.timeout(T),
   });
   jar.updateFromResponse(pwRes.headers);
+  if (!pwRes.ok) {
+    if (pwRes.status === 401) throw new Error("密码错误，请检查后重试");
+    const body = await pwRes.text().catch(() => "");
+    throw new Error(`Password submit failed: ${pwRes.status} ${body.slice(0, 200)}`);
+  }
   const pwData = await pwRes.json() as { state: string };
   if (pwData.state !== "REDIRECT_TO_RETURN_URL") {
     throw new Error(`Login failed (state=${pwData.state}) — wrong password or 2FA required`);
@@ -511,7 +541,7 @@ async function jbPasswordLogin(email: string, password: string): Promise<{
 
   for (let i = 0; i < 15; i++) {
     const r = await fetch(redirectUrl, {
-      headers: { "Cookie": jar.toHeader() },
+      headers: { "Cookie": jar.toHeader(), "User-Agent": JB_UA },
       redirect: "manual",
       signal: AbortSignal.timeout(T),
     });
