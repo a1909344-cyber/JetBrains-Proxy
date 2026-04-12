@@ -12,6 +12,7 @@ import { useToast } from "@/hooks/use-toast";
 import { Trash2, Edit, Plus, CheckCircle2, XCircle, Clock, Power, FlaskConical, Loader2, ChevronDown, ChevronUp, BarChart2, RotateCcw, Zap, BookOpen, Copy, Check, LogIn, ExternalLink } from "lucide-react";
 import { JetbrainsAccount } from "@workspace/api-client-react/src/generated/api.schemas";
 import { Skeleton } from "@/components/ui/skeleton";
+import { useLang } from "@/lib/i18n";
 
 type ExtendedAccount = JetbrainsAccount & {
   enabled?: boolean;
@@ -80,6 +81,7 @@ function parseJsonSafe(s: string): Record<string, unknown> | null {
 export default function Accounts() {
   const queryClient = useQueryClient();
   const { toast } = useToast();
+  const { t } = useLang();
 
   const { data: accounts, isLoading } = useGetJetbrainsAccounts();
   const putAccounts = usePutJetbrainsAccounts();
@@ -99,9 +101,9 @@ export default function Accounts() {
     try {
       await fetch(`${BASE}/api/admin/stats/reset`, { method: "POST" });
       refetchStats();
-      toast({ title: "统计已重置", description: "所有账户的调用统计已清零。" });
+      toast({ title: t("acc_stats_reset_ok") });
     } catch {
-      toast({ title: "重置失败", variant: "destructive" });
+      toast({ title: t("acc_error"), variant: "destructive" });
     } finally {
       setResettingStats(false);
     }
@@ -142,8 +144,8 @@ export default function Accounts() {
   };
 
   const handleOauthCallback = async () => {
-    if (!oauthCallbackUrl.trim()) { setOauthMsg({ ok: false, text: "请粘贴 JetBrains 授权回调 URL" }); return; }
-    if (!oauthLicenseId.trim()) { setOauthMsg({ ok: false, text: "请填写 License ID（在 account.jetbrains.com/licenses 查看）" }); return; }
+    if (!oauthCallbackUrl.trim()) { setOauthMsg({ ok: false, text: t("add_oauth_err_url") }); return; }
+    if (!oauthLicenseId.trim()) { setOauthMsg({ ok: false, text: t("add_oauth_err_lid") }); return; }
     setOauthLoading(true);
     setOauthMsg(null);
     try {
@@ -154,7 +156,7 @@ export default function Accounts() {
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "OAuth callback failed");
-      setOauthMsg({ ok: true, text: `添加成功！邮箱: ${data.email}，Token 将自动刷新。` });
+      setOauthMsg({ ok: true, text: t("add_oauth_success", { email: data.email }) });
       setOauthUrl(null);
       setOauthCallbackUrl("");
       setOauthLicenseId("");
@@ -175,7 +177,7 @@ export default function Accounts() {
 
   const handleQuickImport = () => {
     const text = importText.trim();
-    if (!text) { setImportMsg({ ok: false, text: "请粘贴内容后再点击解析。" }); return; }
+    if (!text) { setImportMsg({ ok: false, text: t("add_import_empty") }); return; }
 
     let licenseId = "";
     let authorization = "";
@@ -200,7 +202,7 @@ export default function Accounts() {
     if (jwt) found.push(`JWT Token (${jwt.slice(0, 12)}…)`);
 
     if (found.length === 0) {
-      setImportMsg({ ok: false, text: "未能从粘贴内容中识别出任何字段。请确保包含 licenseId（JSON体）、Authorization: Bearer xxx（请求头）或 grazie-authenticate-jwt 字段。" });
+      setImportMsg({ ok: false, text: t("add_import_fail") });
       return;
     }
 
@@ -211,7 +213,7 @@ export default function Accounts() {
       ...(jwt ? { jwt } : {}),
     });
     setImportText("");
-    setImportMsg({ ok: true, text: `已自动填充：${found.join("、")}` });
+    setImportMsg({ ok: true, text: t("add_import_ok") + found.join(", ") });
   };
 
   const [formData, setFormData] = useState<ExtendedAccount & { extraHeadersRaw: string; extraBodyRaw: string }>({
@@ -229,10 +231,10 @@ export default function Accounts() {
     putAccounts.mutate({ data: newAccounts }, {
       onSuccess: () => {
         queryClient.invalidateQueries({ queryKey: getGetJetbrainsAccountsQueryKey() });
-        toast({ title: successMsg || "Saved", description: "Accounts updated successfully." });
+        toast({ title: successMsg || t("acc_saved") });
       },
       onError: (err: any) => {
-        toast({ title: "Error", description: err.message || "Failed to save.", variant: "destructive" });
+        toast({ title: t("acc_error"), description: err.message || t("acc_error"), variant: "destructive" });
       }
     });
   };
@@ -267,13 +269,13 @@ export default function Accounts() {
     putAccounts.mutate({ data: newAccounts }, {
       onSuccess: () => {
         queryClient.invalidateQueries({ queryKey: getGetJetbrainsAccountsQueryKey() });
-        toast({ title: "Account Saved", description: "JetBrains account updated." });
+        toast({ title: t("acc_saved") });
         setIsAddOpen(false);
         setEditingIndex(null);
         resetForm();
       },
       onError: (err: any) => {
-        toast({ title: "Error", description: err.message || "Failed to save.", variant: "destructive" });
+        toast({ title: t("acc_error"), description: err.message || t("acc_error"), variant: "destructive" });
       }
     });
   };
@@ -285,9 +287,9 @@ export default function Accounts() {
 
   const handleDelete = (index: number) => {
     if (!accounts) return;
-    if (!confirm("Are you sure you want to delete this account?")) return;
+    if (!confirm(t("acc_delete_confirm"))) return;
     const newAccounts = (accounts as ExtendedAccount[]).filter((_, i) => i !== index);
-    saveAccounts(newAccounts, "Account Deleted");
+    saveAccounts(newAccounts, t("acc_deleted"));
   };
 
   const handleToggleEnabled = (index: number) => {
@@ -378,8 +380,8 @@ export default function Accounts() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-3xl font-bold tracking-tight">JetBrains Accounts</h1>
-          <p className="text-muted-foreground mt-2">Manage auth configurations for the proxy pool. Only enabled accounts are used.</p>
+          <h1 className="text-3xl font-bold tracking-tight">{t("acc_title")}</h1>
+          <p className="text-muted-foreground mt-2">{t("acc_desc")}</p>
         </div>
 
         <div className="flex gap-2 items-center">
@@ -388,11 +390,11 @@ export default function Accounts() {
             size="sm"
             onClick={handleResetStats}
             disabled={resettingStats}
-            title="重置所有账户的调用统计"
+            title={t("acc_reset_stats")}
             data-testid="btn-reset-stats"
           >
             {resettingStats ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <RotateCcw className="mr-2 h-4 w-4" />}
-            重置统计
+            {t("acc_reset_stats")}
           </Button>
 
         <Dialog open={isAddOpen} onOpenChange={(open) => {
@@ -402,12 +404,12 @@ export default function Accounts() {
           <DialogTrigger asChild>
             <Button data-testid="btn-add-account">
               <Plus className="mr-2 h-4 w-4" />
-              Add Account
+              {t("acc_add")}
             </Button>
           </DialogTrigger>
           <DialogContent className="sm:max-w-[560px] max-h-[90vh] overflow-y-auto">
             <DialogHeader>
-              <DialogTitle>{editingIndex !== null ? 'Edit Account' : 'Add Account'}</DialogTitle>
+              <DialogTitle>{editingIndex !== null ? t("acc_edit") : t("acc_add")}</DialogTitle>
             </DialogHeader>
             <form onSubmit={handleSave} className="space-y-4 py-2">
 
@@ -416,18 +418,16 @@ export default function Accounts() {
                 <div className="rounded-md border-2 border-primary/50 bg-primary/5 p-4 space-y-3">
                   <div className="flex items-center gap-2">
                     <LogIn className="h-4 w-4 text-primary" />
-                    <span className="text-xs font-semibold text-primary uppercase tracking-wider">JetBrains OAuth 登录</span>
-                    <span className="text-xs bg-primary/20 text-primary px-1.5 py-0.5 rounded font-medium">推荐 · Token 自动刷新</span>
+                    <span className="text-xs font-semibold text-primary uppercase tracking-wider">{t("add_oauth_title")}</span>
+                    <span className="text-xs bg-primary/20 text-primary px-1.5 py-0.5 rounded font-medium">{t("add_oauth_badge")}</span>
                   </div>
-                  <p className="text-xs text-muted-foreground">
-                    用你的 JetBrains 账号一键授权，获取 <code className="bg-muted px-1 rounded">refresh_token</code>，系统每 50 分钟自动更新认证 Token，无需手动维护。
-                  </p>
+                  <p className="text-xs text-muted-foreground">{t("add_oauth_desc")}</p>
 
                   {/* Step 1: Get OAuth URL */}
                   <div className="space-y-2">
                     <div className="flex items-center gap-2 text-xs font-medium text-foreground">
                       <span className="w-5 h-5 rounded-full bg-primary text-primary-foreground flex items-center justify-center text-[10px] font-bold">1</span>
-                      点击按钮前往 JetBrains 授权页面
+                      {t("add_oauth_step1")}
                     </div>
                     <div className="flex items-center gap-2 flex-wrap">
                       <Button
@@ -439,7 +439,7 @@ export default function Accounts() {
                         className="border-primary/50 text-primary hover:bg-primary/10"
                       >
                         {oauthLoading ? <Loader2 className="mr-1.5 h-3 w-3 animate-spin" /> : <LogIn className="mr-1.5 h-3 w-3" />}
-                        获取 JetBrains 授权链接
+                        {t("add_oauth_get_url")}
                       </Button>
                       {oauthUrl && (
                         <a
@@ -448,13 +448,13 @@ export default function Accounts() {
                           rel="noopener noreferrer"
                           className="inline-flex items-center gap-1 text-xs text-primary hover:underline font-medium"
                         >
-                          <ExternalLink className="h-3 w-3" /> 点击此链接前往授权
+                          <ExternalLink className="h-3 w-3" /> {t("add_oauth_open")}
                         </a>
                       )}
                     </div>
                     {oauthUrl && (
                       <p className="text-xs text-muted-foreground bg-muted/40 rounded px-2 py-1.5 border border-border">
-                        授权完成后，JetBrains 会将浏览器跳转到 <code className="bg-muted px-0.5 rounded">http://localhost:3000/?code=...&state=...</code>（本地直接跳转；远程部署时页面会打不开，复制地址栏 URL 即可）
+                        {t("add_oauth_redirect_tip")}
                       </p>
                     )}
                   </div>
@@ -464,7 +464,7 @@ export default function Accounts() {
                     <div className="space-y-2">
                       <div className="flex items-center gap-2 text-xs font-medium text-foreground">
                         <span className="w-5 h-5 rounded-full bg-primary text-primary-foreground flex items-center justify-center text-[10px] font-bold">2</span>
-                        复制浏览器地址栏 URL，粘贴到这里
+                        {t("add_oauth_step2")}
                       </div>
                       <Input
                         placeholder="http://localhost:3000/?code=abc123&state=xyz..."
@@ -475,7 +475,7 @@ export default function Accounts() {
 
                       <div className="flex items-center gap-2 text-xs font-medium text-foreground mt-1">
                         <span className="w-5 h-5 rounded-full bg-primary text-primary-foreground flex items-center justify-center text-[10px] font-bold">3</span>
-                        填写 License ID
+                        {t("add_oauth_step3")}
                         <a
                           href="https://account.jetbrains.com/licenses"
                           target="_blank"
@@ -500,7 +500,7 @@ export default function Accounts() {
                         className="mt-1"
                       >
                         {oauthLoading ? <Loader2 className="mr-1.5 h-3 w-3 animate-spin" /> : <CheckCircle2 className="mr-1.5 h-3 w-3" />}
-                        完成添加
+                        {t("add_oauth_submit")}
                       </Button>
                     </div>
                   )}
@@ -518,7 +518,7 @@ export default function Accounts() {
               <div className="relative py-1">
                 <div className="absolute inset-0 flex items-center"><span className="w-full border-t border-muted-foreground/20" /></div>
                 <div className="relative flex justify-center text-xs uppercase">
-                  <span className="bg-background px-2 text-muted-foreground">或手动填写 / Manual</span>
+                  <span className="bg-background px-2 text-muted-foreground">{t("add_or_manual")}</span>
                 </div>
               </div>
 
@@ -526,20 +526,18 @@ export default function Accounts() {
               <div className="rounded-md border-2 border-amber-500/40 bg-amber-500/5 p-4 space-y-3">
                 <div className="flex items-center gap-2">
                   <Zap className="h-4 w-4 text-amber-500" />
-                  <span className="text-xs font-semibold text-amber-600 uppercase tracking-wider">快速导入 / Quick Import</span>
+                  <span className="text-xs font-semibold text-amber-600 uppercase tracking-wider">{t("add_import_title")}</span>
                 </div>
-                <p className="text-xs text-muted-foreground">
-                  将抓包工具（Fiddler、Charles、Proxyman、Wireshark）里的原始 HTTP 请求或 cURL 命令粘贴到下方，系统会自动识别 License ID、Auth Token 和 JWT。
-                </p>
+                <p className="text-xs text-muted-foreground">{t("add_import_desc")}</p>
                 <Textarea
-                  placeholder={"粘贴原始 HTTP 请求或 cURL 命令，例如：\n\ncurl -X POST 'https://api.jetbrains.ai/auth/jetbrains-jwt/...' \\\n  -H 'Authorization: Bearer eyJhbGci...' \\\n  --data '{\"licenseId\":\"WDVWPRAT3B\"}'"}
+                  placeholder={t("add_import_placeholder")}
                   value={importText}
                   onChange={e => { setImportText(e.target.value); setImportMsg(null); }}
                   className="font-mono text-xs h-28 resize-none"
                 />
                 <div className="flex items-center gap-2">
                   <Button type="button" size="sm" onClick={handleQuickImport} className="bg-amber-500 hover:bg-amber-600 text-white border-0">
-                    <Zap className="mr-1.5 h-3 w-3" /> 自动解析并填充
+                    <Zap className="mr-1.5 h-3 w-3" /> {t("add_import_btn")}
                   </Button>
                   {importMsg && (
                     <span className={`text-xs ${importMsg.ok ? "text-primary" : "text-destructive"}`}>
@@ -559,7 +557,7 @@ export default function Accounts() {
                 >
                   <span className="flex items-center gap-2 font-medium">
                     <BookOpen className="h-4 w-4 text-muted-foreground" />
-                    如何获取 License ID 和 Auth Token？
+                    {t("add_guide_title")}
                   </span>
                   {showGuide ? <ChevronUp className="h-4 w-4 text-muted-foreground" /> : <ChevronDown className="h-4 w-4 text-muted-foreground" />}
                 </button>
@@ -574,7 +572,7 @@ export default function Accounts() {
                           onClick={() => setGuideTab(tab)}
                           className={`px-3 py-2 transition-colors ${guideTab === tab ? "border-b-2 border-primary text-primary bg-primary/5" : "text-muted-foreground hover:text-foreground"}`}
                         >
-                          {tab === "capture" ? "🔍 抓包" : tab === "win" ? "🪟 Windows" : tab === "mac" ? "🍎 macOS" : "🐧 Linux"}
+                          {tab === "capture" ? t("add_guide_capture") : tab === "win" ? t("add_guide_win") : tab === "mac" ? t("add_guide_mac") : t("add_guide_linux")}
                         </button>
                       ))}
                     </div>
@@ -680,8 +678,8 @@ find ~/.config/JetBrains -name "*.xml" 2>/dev/null | xargs grep -l "licenseId\\|
               {/* Mode A */}
               <div className="rounded-md border-2 border-primary/40 bg-primary/5 p-4 space-y-3">
                 <div className="flex items-center gap-2">
-                  <span className="text-xs font-semibold text-primary uppercase tracking-wider">Mode A — Static JWT</span>
-                  <span className="text-xs bg-primary/20 text-primary px-1.5 py-0.5 rounded font-medium">推荐 / Recommended</span>
+                  <span className="text-xs font-semibold text-primary uppercase tracking-wider">{t("add_mode_a")}</span>
+                  <span className="text-xs bg-primary/20 text-primary px-1.5 py-0.5 rounded font-medium">{t("add_mode_a_badge")}</span>
                 </div>
                 <div className="space-y-1.5">
                   <Label htmlFor="jwt">JWT Token (<code className="text-primary bg-primary/10 px-1 rounded text-xs">grazie-authenticate-jwt</code>)</Label>
@@ -694,9 +692,8 @@ find ~/.config/JetBrains -name "*.xml" 2>/dev/null | xargs grep -l "licenseId\\|
                     className="font-mono text-xs"
                   />
                   <div className="text-xs text-muted-foreground space-y-1 pt-0.5">
-                    <p>抓包找任意发往 <code className="bg-muted px-1 rounded">api.jetbrains.ai</code> 的请求，复制请求头</p>
-                    <p><code className="bg-muted px-1 rounded font-mono">grazie-authenticate-jwt: eyJ...</code> 的值粘贴到这里。</p>
-                    <p className="text-amber-500/80">⚠ JWT 会定期过期，需手动更新。</p>
+                    <p>{t("add_mode_a_jwt_hint1")} <code className="bg-muted px-1 rounded font-mono">grazie-authenticate-jwt</code> {t("add_mode_a_jwt_hint2")}</p>
+                    <p className="text-amber-500/80">{t("add_mode_a_jwt_warn")}</p>
                   </div>
                 </div>
               </div>
@@ -704,14 +701,14 @@ find ~/.config/JetBrains -name "*.xml" 2>/dev/null | xargs grep -l "licenseId\\|
               <div className="relative py-1">
                 <div className="absolute inset-0 flex items-center"><span className="w-full border-t border-muted-foreground/20" /></div>
                 <div className="relative flex justify-center text-xs uppercase">
-                  <span className="bg-background px-2 text-muted-foreground">OR (高级 / Advanced)</span>
+                  <span className="bg-background px-2 text-muted-foreground">{t("add_or_adv")}</span>
                 </div>
               </div>
 
               {/* Mode B */}
               <div className="rounded-md border border-border bg-muted/30 p-4 space-y-3">
                 <div className="flex items-center gap-2">
-                  <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Mode B — License (自动刷新 JWT)</span>
+                  <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">{t("add_mode_b")}</span>
                 </div>
                 <p className="text-xs text-amber-500/80">
                   ⚠ 需抓包 <code className="bg-muted px-1 rounded">POST /auth/jetbrains-jwt/provide-access/license/v2</code> 请求获取凭证。如果测试返回 <code className="bg-muted px-1 rounded">state=NONE</code>，展开下方「高级」调整参数后重测。
@@ -750,7 +747,7 @@ find ~/.config/JetBrains -name "*.xml" 2>/dev/null | xargs grep -l "licenseId\\|
                   onClick={() => setShowAdvanced(v => !v)}
                 >
                   {showAdvanced ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
-                  高级选项 / Advanced — 自定义刷新请求
+                  {t("add_adv_title")}
                 </button>
 
                 {showAdvanced && (
@@ -807,15 +804,15 @@ find ~/.config/JetBrains -name "*.xml" 2>/dev/null | xargs grep -l "licenseId\\|
                   checked={formData.enabled !== false}
                   onCheckedChange={v => setFormData({...formData, enabled: v})}
                 />
-                <Label htmlFor="enabled" className="cursor-pointer">Account enabled</Label>
+                <Label htmlFor="enabled" className="cursor-pointer">{t("acc_enabled_label")}</Label>
               </div>
 
               <DialogFooter>
                 <DialogClose asChild>
-                  <Button type="button" variant="outline">Cancel</Button>
+                  <Button type="button" variant="outline">{t("acc_cancel")}</Button>
                 </DialogClose>
                 <Button type="submit" disabled={putAccounts.isPending} data-testid="btn-save-account">
-                  {putAccounts.isPending ? 'Saving...' : 'Save Account'}
+                  {putAccounts.isPending ? t("acc_saving") : t("acc_save")}
                 </Button>
               </DialogFooter>
             </form>
@@ -857,7 +854,7 @@ find ~/.config/JetBrains -name "*.xml" 2>/dev/null | xargs grep -l "licenseId\\|
                       </span>
                       {!enabled && (
                         <span className="text-xs px-2 py-0.5 bg-destructive/10 text-destructive rounded-full border border-destructive/20 font-normal">
-                          Disabled
+                          {t("common_disabled")}
                         </span>
                       )}
                     </CardTitle>
@@ -865,9 +862,9 @@ find ~/.config/JetBrains -name "*.xml" 2>/dev/null | xargs grep -l "licenseId\\|
                       {acc.has_quota !== undefined && (
                         <span className="flex items-center gap-1">
                           {acc.has_quota ? (
-                            <><CheckCircle2 className="h-3 w-3 text-primary" /> Quota Available</>
+                            <><CheckCircle2 className="h-3 w-3 text-primary" /> {t("acc_quota")}</>
                           ) : (
-                            <><XCircle className="h-3 w-3 text-destructive" /> No Quota</>
+                            <><XCircle className="h-3 w-3 text-destructive" /> {t("acc_no_quota")}</>
                           )}
                         </span>
                       )}
@@ -893,7 +890,7 @@ find ~/.config/JetBrains -name "*.xml" 2>/dev/null | xargs grep -l "licenseId\\|
                       variant="outline"
                       size="icon"
                       onClick={() => handleToggleEnabled(i)}
-                      title={enabled ? "Disable account" : "Enable account"}
+                      title={enabled ? t("acc_disable") : t("acc_enable")}
                       className={enabled ? "text-primary border-primary/30 hover:bg-primary/10" : "text-muted-foreground"}
                       data-testid={`btn-toggle-${i}`}
                     >
@@ -937,7 +934,7 @@ find ~/.config/JetBrains -name "*.xml" 2>/dev/null | xargs grep -l "licenseId\\|
                   {getMode(acc) === "OAuth" && (
                     <div className="grid grid-cols-[120px_1fr] items-center gap-2">
                       <span className="text-muted-foreground font-mono text-xs">Token:</span>
-                      <span className="text-xs text-primary/70">自动刷新中 · refresh_token 已保存</span>
+                      <span className="text-xs text-primary/70">{t("common_refresh")} · refresh_token ✓</span>
                     </div>
                   )}
                   {acc.grazieAgent && (
@@ -997,28 +994,28 @@ find ~/.config/JetBrains -name "*.xml" 2>/dev/null | xargs grep -l "licenseId\\|
                       <div className="mt-3 border-t border-border pt-3 space-y-1.5">
                         <div className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground mb-1">
                           <BarChart2 className="h-3 w-3" />
-                          使用统计
+                          {t("acc_usage")}
                         </div>
                         {s ? (
                           <div className="grid grid-cols-3 gap-2">
                             <div className="rounded-md bg-muted/40 px-2 py-1.5 text-center">
                               <p className="text-lg font-semibold tabular-nums">{fmtNum(s.call_count)}</p>
-                              <p className="text-xs text-muted-foreground">调用次数</p>
+                              <p className="text-xs text-muted-foreground">{t("acc_calls")}</p>
                             </div>
                             <div className="rounded-md bg-muted/40 px-2 py-1.5 text-center">
                               <p className="text-lg font-semibold tabular-nums">{estTokens(s.input_chars)}</p>
-                              <p className="text-xs text-muted-foreground">输入 Token (估)</p>
+                              <p className="text-xs text-muted-foreground">{t("acc_input")}</p>
                             </div>
                             <div className="rounded-md bg-muted/40 px-2 py-1.5 text-center">
                               <p className="text-lg font-semibold tabular-nums">{estTokens(s.output_chars)}</p>
-                              <p className="text-xs text-muted-foreground">输出 Token (估)</p>
+                              <p className="text-xs text-muted-foreground">{t("acc_output")}</p>
                             </div>
                           </div>
                         ) : (
-                          <p className="text-xs text-muted-foreground italic">暂无记录</p>
+                          <p className="text-xs text-muted-foreground italic">{t("acc_no_record")}</p>
                         )}
                         <div className="grid grid-cols-[120px_1fr] items-center gap-2 text-xs text-muted-foreground pt-1">
-                          <span className="flex items-center gap-1"><Clock className="h-3 w-3" /> Last Used:</span>
+                          <span className="flex items-center gap-1"><Clock className="h-3 w-3" /> {t("acc_last_used")}:</span>
                           <span>{s ? formatDate(s.last_call_at) : formatDate(acc.last_updated)}</span>
                         </div>
                       </div>

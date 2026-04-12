@@ -3,8 +3,10 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Activity, Server, Users, KeyRound, Cpu, AlertTriangle } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { useLang } from "@/lib/i18n";
 
 export default function Dashboard() {
+  const { t } = useLang();
   const { data: status, isLoading, isError } = useGetAdminStatus({
     query: { refetchInterval: 10000 }
   });
@@ -12,7 +14,7 @@ export default function Dashboard() {
   if (isLoading) {
     return (
       <div className="space-y-6">
-        <h1 className="text-3xl font-bold tracking-tight">Dashboard</h1>
+        <h1 className="text-3xl font-bold tracking-tight">{t("dash_title")}</h1>
         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
           {[...Array(4)].map((_, i) => (
             <Card key={i}>
@@ -34,11 +36,11 @@ export default function Dashboard() {
   if (isError) {
     return (
       <div className="space-y-6">
-        <h1 className="text-3xl font-bold tracking-tight">Dashboard</h1>
+        <h1 className="text-3xl font-bold tracking-tight">{t("dash_title")}</h1>
         <Alert variant="destructive">
           <AlertTriangle className="h-4 w-4" />
-          <AlertTitle>Error</AlertTitle>
-          <AlertDescription>Failed to fetch proxy status. Is the API server running?</AlertDescription>
+          <AlertTitle>{t("common_error")}</AlertTitle>
+          <AlertDescription>{t("dash_err_desc")}</AlertDescription>
         </Alert>
       </div>
     );
@@ -47,20 +49,20 @@ export default function Dashboard() {
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
-        <h1 className="text-3xl font-bold tracking-tight">Dashboard</h1>
+        <h1 className="text-3xl font-bold tracking-tight">{t("dash_title")}</h1>
         <div className="flex items-center gap-2 text-sm text-muted-foreground">
           <span className="relative flex h-3 w-3">
             {status?.online && <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-primary opacity-75"></span>}
             <span className={`relative inline-flex rounded-full h-3 w-3 ${status?.online ? 'bg-primary' : 'bg-destructive'}`}></span>
           </span>
-          <span data-testid="status-online">{status?.online ? 'Service Online' : 'Service Offline'}</span>
+          <span data-testid="status-online">{status?.online ? t("dash_online") : t("dash_offline")}</span>
         </div>
       </div>
 
       {status?.error && (
         <Alert variant="destructive">
           <AlertTriangle className="h-4 w-4" />
-          <AlertTitle>Proxy Error</AlertTitle>
+          <AlertTitle>{t("dash_error")}</AlertTitle>
           <AlertDescription data-testid="status-error">{status.error}</AlertDescription>
         </Alert>
       )}
@@ -68,12 +70,12 @@ export default function Dashboard() {
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
         <Card className={!status?.online ? 'border-destructive' : 'border-primary/50'}>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Proxy Status</CardTitle>
+            <CardTitle className="text-sm font-medium">{t("dash_proxy_status")}</CardTitle>
             <Server className={`h-4 w-4 ${status?.online ? 'text-primary' : 'text-destructive'}`} />
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold" data-testid="text-status-code">
-              {status?.online ? (status?.proxyStatusCode || 'Running') : 'Offline'}
+              {status?.online ? (status?.proxyStatusCode || t("dash_running")) : t("dash_offline_val")}
             </div>
             <p className="text-xs text-muted-foreground mt-1 truncate" title={status?.proxyUrl}>
               {status?.proxyUrl || 'N/A'}
@@ -83,40 +85,40 @@ export default function Dashboard() {
 
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Accounts</CardTitle>
+            <CardTitle className="text-sm font-medium">{t("dash_accounts")}</CardTitle>
             <Users className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold" data-testid="text-account-count">{status?.accountCount ?? 0}</div>
-            <p className="text-xs text-muted-foreground mt-1">Configured JetBrains Accounts</p>
+            <p className="text-xs text-muted-foreground mt-1">{t("dash_accounts_sub")}</p>
           </CardContent>
         </Card>
 
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">API Keys</CardTitle>
+            <CardTitle className="text-sm font-medium">{t("dash_apikeys")}</CardTitle>
             <KeyRound className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold" data-testid="text-key-count">{status?.keyCount ?? 0}</div>
-            <p className="text-xs text-muted-foreground mt-1">Active client access keys</p>
+            <p className="text-xs text-muted-foreground mt-1">{t("dash_apikeys_sub")}</p>
           </CardContent>
         </Card>
 
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Models</CardTitle>
+            <CardTitle className="text-sm font-medium">{t("dash_models")}</CardTitle>
             <Cpu className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold" data-testid="text-model-count">{status?.modelCount ?? 0}</div>
-            <p className="text-xs text-muted-foreground mt-1">Available mapped models</p>
+            <p className="text-xs text-muted-foreground mt-1">{t("dash_models_sub")}</p>
           </CardContent>
         </Card>
       </div>
       
       <div className="text-xs text-muted-foreground">
-        Data Directory: <code className="bg-muted px-1 py-0.5 rounded">{status?.dataDir}</code>
+        {t("dash_data_dir")}: <code className="bg-muted px-1 py-0.5 rounded">{status?.dataDir}</code>
       </div>
     </div>
   );

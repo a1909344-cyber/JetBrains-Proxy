@@ -4,12 +4,12 @@ import { useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
 import { useToast } from "@/hooks/use-toast";
-import { Trash2, Plus, Save, RotateCcw, CloudDownload, Loader2, CheckSquare, Square } from "lucide-react";
+import { Trash2, Plus, Save, RotateCcw, CloudDownload, Loader2 } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ModelsConfig } from "@workspace/api-client-react/src/generated/api.schemas";
+import { useLang } from "@/lib/i18n";
 
 const BASE = import.meta.env.BASE_URL?.replace(/\/$/, "") || "";
 
@@ -25,6 +25,7 @@ async function fetchUpstreamModels(): Promise<{ profiles: string[]; raw: unknown
 export default function Models() {
   const queryClient = useQueryClient();
   const { toast } = useToast();
+  const { t } = useLang();
 
   const { data: config, isLoading } = useGetModelsConfig();
   const putConfig = usePutModelsConfig();
@@ -33,7 +34,6 @@ export default function Models() {
   const [isDirty, setIsDirty] = useState(false);
   const [mappingsArray, setMappingsArray] = useState<{ key: string; val: string }[]>([]);
 
-  // Upstream fetch state
   const [fetchState, setFetchState] = useState<"idle" | "loading" | "done" | "error">("idle");
   const [upstreamModels, setUpstreamModels] = useState<string[]>([]);
   const [upstreamUrl, setUpstreamUrl] = useState("");
@@ -61,11 +61,11 @@ export default function Models() {
     putConfig.mutate({ data: payload }, {
       onSuccess: () => {
         queryClient.invalidateQueries({ queryKey: getGetModelsConfigQueryKey() });
-        toast({ title: "Models Saved", description: "Model configurations updated successfully." });
+        toast({ title: t("models_saved") });
         setIsDirty(false);
       },
       onError: (err: any) => {
-        toast({ title: "Error", description: err.message || "Failed to save models.", variant: "destructive" });
+        toast({ title: t("models_error"), description: err.message || t("models_error"), variant: "destructive" });
       },
     });
   };
@@ -112,7 +112,6 @@ export default function Models() {
       const result = await fetchUpstreamModels();
       setUpstreamModels(result.profiles);
       setUpstreamUrl(result.url);
-      // Pre-select all models not already in the config
       const existing = new Set(localConfig.models);
       setSelectedUpstream(new Set(result.profiles.filter(p => !existing.has(p))));
       setFetchState("done");
@@ -140,12 +139,12 @@ export default function Models() {
   const handleImportSelected = () => {
     const toAdd = [...selectedUpstream].filter(m => !localConfig.models.includes(m));
     if (toAdd.length === 0) {
-      toast({ title: "Nothing new to add", description: "All selected models are already in your list." });
+      toast({ title: t("models_saved"), description: t("models_empty") });
       return;
     }
     setLocalConfig({ ...localConfig, models: [...localConfig.models, ...toAdd] });
     setIsDirty(true);
-    toast({ title: `Added ${toAdd.length} model${toAdd.length > 1 ? "s" : ""}`, description: "Remember to save changes." });
+    toast({ title: `+${toAdd.length} model${toAdd.length > 1 ? "s" : ""}` });
     setFetchState("idle");
   };
 
@@ -153,14 +152,14 @@ export default function Models() {
     if (selectedUpstream.size === 0) return;
     setLocalConfig({ ...localConfig, models: [...selectedUpstream] });
     setIsDirty(true);
-    toast({ title: "Model list replaced", description: `${selectedUpstream.size} models loaded. Remember to save.` });
+    toast({ title: t("models_saved"), description: `${selectedUpstream.size} models loaded.` });
     setFetchState("idle");
   };
 
   if (isLoading) {
     return (
       <div className="space-y-6">
-        <h1 className="text-3xl font-bold tracking-tight">Models Configuration</h1>
+        <h1 className="text-3xl font-bold tracking-tight">{t("models_title")}</h1>
         <Skeleton className="h-[400px] w-full" />
       </div>
     );
@@ -172,8 +171,8 @@ export default function Models() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-3xl font-bold tracking-tight">Models Configuration</h1>
-          <p className="text-muted-foreground mt-2">Manage available models and Anthropic mappings.</p>
+          <h1 className="text-3xl font-bold tracking-tight">{t("models_title")}</h1>
+          <p className="text-muted-foreground mt-2">{t("models_desc")}</p>
         </div>
         <div className="flex gap-2">
           <Button
@@ -185,7 +184,7 @@ export default function Models() {
             {fetchState === "loading"
               ? <Loader2 className="mr-2 h-4 w-4 animate-spin" />
               : <CloudDownload className="mr-2 h-4 w-4" />}
-            从 JetBrains 获取
+            {fetchState === "loading" ? t("models_fetching") : t("models_fetch")}
           </Button>
           <Button variant="outline" onClick={handleReset} disabled={!isDirty} data-testid="btn-reset">
             <RotateCcw className="mr-2 h-4 w-4" />
@@ -193,16 +192,15 @@ export default function Models() {
           </Button>
           <Button onClick={handleSave} disabled={!isDirty || putConfig.isPending} data-testid="btn-save-models">
             <Save className="mr-2 h-4 w-4" />
-            {putConfig.isPending ? "Saving..." : "Save Changes"}
+            {putConfig.isPending ? t("models_saving") : t("models_save")}
           </Button>
         </div>
       </div>
 
-      {/* Upstream fetch panel */}
       {fetchState === "error" && (
         <Card className="border-destructive/40 bg-destructive/5">
           <CardContent className="py-4 text-sm text-destructive">
-            <strong>获取失败：</strong>{fetchError}
+            <strong>{t("models_fetch_err")}：</strong>{fetchError}
           </CardContent>
         </Card>
       )}
@@ -212,20 +210,20 @@ export default function Models() {
           <CardHeader className="pb-2">
             <div className="flex items-center justify-between flex-wrap gap-2">
               <div>
-                <CardTitle className="text-base">从上游获取到 {upstreamModels.length} 个模型</CardTitle>
+                <CardTitle className="text-base">{t("models_fetch_title")} ({upstreamModels.length})</CardTitle>
                 <CardDescription className="text-xs font-mono mt-0.5 truncate">{upstreamUrl}</CardDescription>
               </div>
               <div className="flex gap-2 flex-wrap">
-                <Button size="sm" variant="ghost" onClick={selectAllUpstream} className="text-xs h-7">全选</Button>
-                <Button size="sm" variant="ghost" onClick={selectNewUpstream} className="text-xs h-7">只选新增</Button>
-                <Button size="sm" variant="ghost" onClick={clearSelectionUpstream} className="text-xs h-7">取消全选</Button>
+                <Button size="sm" variant="ghost" onClick={selectAllUpstream} className="text-xs h-7">{t("models_select_all")}</Button>
+                <Button size="sm" variant="ghost" onClick={selectNewUpstream} className="text-xs h-7">{t("models_fetch_append")}</Button>
+                <Button size="sm" variant="ghost" onClick={clearSelectionUpstream} className="text-xs h-7">{t("models_select_none")}</Button>
                 <Button size="sm" variant="secondary" onClick={handleImportSelected} disabled={selectedUpstream.size === 0} className="h-7">
-                  追加 {selectedUpstream.size} 个
+                  {t("models_fetch_append")} ({selectedUpstream.size})
                 </Button>
                 <Button size="sm" onClick={handleReplaceAll} disabled={selectedUpstream.size === 0} className="h-7">
-                  替换为 {selectedUpstream.size} 个
+                  {t("models_fetch_replace")} ({selectedUpstream.size})
                 </Button>
-                <Button size="sm" variant="ghost" onClick={() => setFetchState("idle")} className="text-xs h-7 text-muted-foreground">关闭</Button>
+                <Button size="sm" variant="ghost" onClick={() => setFetchState("idle")} className="text-xs h-7 text-muted-foreground">{t("models_fetch_cancel")}</Button>
               </div>
             </div>
           </CardHeader>
@@ -248,7 +246,7 @@ export default function Models() {
                     />
                     <span className="truncate">{model}</span>
                     {isExisting && (
-                      <span className="ml-auto text-xs text-muted-foreground shrink-0">已有</span>
+                      <span className="ml-auto text-xs text-muted-foreground shrink-0">✓</span>
                     )}
                   </label>
                 );
@@ -261,19 +259,18 @@ export default function Models() {
       {fetchState === "done" && upstreamModels.length === 0 && (
         <Card className="border-amber-500/30 bg-amber-500/5">
           <CardContent className="py-4 text-sm text-amber-600">
-            JetBrains 返回了成功响应但模型列表为空。可能该账户订阅级别不支持查询可用模型。
+            {t("models_empty")}
           </CardContent>
         </Card>
       )}
 
       <div className="grid gap-6 lg:grid-cols-2">
-        {/* Available Models */}
         <Card className="border-border">
           <CardHeader>
             <div className="flex items-center justify-between">
               <div>
-                <CardTitle>Available Models</CardTitle>
-                <CardDescription>Models exposed by GET /v1/models</CardDescription>
+                <CardTitle>{t("models_model_id")}</CardTitle>
+                <CardDescription>GET /v1/models</CardDescription>
               </div>
               <Button variant="secondary" size="sm" onClick={() => addModel()} data-testid="btn-add-model">
                 <Plus className="h-4 w-4" />
@@ -282,9 +279,7 @@ export default function Models() {
           </CardHeader>
           <CardContent className="space-y-3">
             {localConfig.models.length === 0 ? (
-              <p className="text-sm text-muted-foreground italic text-center py-4">
-                No models configured. Use "从 JetBrains 获取" to import.
-              </p>
+              <p className="text-sm text-muted-foreground italic text-center py-4">{t("models_empty")}</p>
             ) : (
               localConfig.models.map((model, i) => (
                 <div key={i} className="flex items-center gap-2">
@@ -304,13 +299,12 @@ export default function Models() {
           </CardContent>
         </Card>
 
-        {/* Anthropic Mappings */}
         <Card className="border-border">
           <CardHeader>
             <div className="flex items-center justify-between">
               <div>
-                <CardTitle>Anthropic Mappings</CardTitle>
-                <CardDescription>Map OpenAI model IDs to JetBrains Anthropic models</CardDescription>
+                <CardTitle>{t("models_anthropic_maps")}</CardTitle>
+                <CardDescription>{t("models_anthropic_desc")}</CardDescription>
               </div>
               <Button variant="secondary" size="sm" onClick={addMapping} data-testid="btn-add-mapping">
                 <Plus className="h-4 w-4" />
@@ -319,12 +313,12 @@ export default function Models() {
           </CardHeader>
           <CardContent className="space-y-3">
             {mappingsArray.length === 0 ? (
-              <p className="text-sm text-muted-foreground italic text-center py-4">No mappings configured.</p>
+              <p className="text-sm text-muted-foreground italic text-center py-4">{t("models_empty")}</p>
             ) : (
               <div className="space-y-3">
                 <div className="grid grid-cols-[1fr_1fr_40px] gap-2 px-1 text-xs font-medium text-muted-foreground">
-                  <div>Proxy Input (OpenAI style)</div>
-                  <div>JetBrains Output</div>
+                  <div>{t("models_key")}</div>
+                  <div>{t("models_value")}</div>
                   <div></div>
                 </div>
                 {mappingsArray.map((mapping, i) => (

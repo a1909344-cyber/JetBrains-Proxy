@@ -6,41 +6,58 @@ import {
   Cpu, 
   TerminalSquare, 
   Activity, 
-  Menu
+  Menu,
+  Languages
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 import { useState } from "react";
-
-const navigation = [
-  { name: "Dashboard", href: "/", icon: LayoutDashboard },
-  { name: "Accounts", href: "/accounts", icon: Users },
-  { name: "API Keys", href: "/keys", icon: KeyRound },
-  { name: "Models", href: "/models", icon: Cpu },
-  { name: "API Tester", href: "/test", icon: Activity },
-  { name: "Logs", href: "/logs", icon: TerminalSquare },
-];
+import { useLang } from "@/lib/i18n";
 
 export function Layout({ children }: { children: React.ReactNode }) {
   const [location] = useLocation();
   const [open, setOpen] = useState(false);
+  const { t, lang, setLang } = useLang();
+
+  const navigation = [
+    { key: "nav_dashboard", href: "/", icon: LayoutDashboard },
+    { key: "nav_accounts", href: "/accounts", icon: Users },
+    { key: "nav_apikeys", href: "/keys", icon: KeyRound },
+    { key: "nav_models", href: "/models", icon: Cpu },
+    { key: "nav_tester", href: "/test", icon: Activity },
+    { key: "nav_logs", href: "/logs", icon: TerminalSquare },
+  ] as const;
+
+  const LangToggle = () => (
+    <Button
+      variant="ghost"
+      size="sm"
+      onClick={() => setLang(lang === "zh" ? "en" : "zh")}
+      className="w-full justify-start gap-2 text-sidebar-foreground text-xs font-mono mt-1"
+      title={lang === "zh" ? "Switch to English" : "切换为中文"}
+    >
+      <Languages className="h-4 w-4 shrink-0" />
+      {lang === "zh" ? "EN / 英文" : "中文 / ZH"}
+    </Button>
+  );
 
   const NavLinks = () => (
     <div className="flex flex-col gap-1 w-full">
       {navigation.map((item) => {
         const isActive = location === item.href;
+        const name = t(item.key as any);
         return (
-          <Link key={item.name} href={item.href}>
+          <Link key={item.key} href={item.href}>
             <Button
               variant={isActive ? "secondary" : "ghost"}
               className={`w-full justify-start ${
                 isActive ? "bg-sidebar-accent text-sidebar-accent-foreground" : "text-sidebar-foreground"
               }`}
               onClick={() => setOpen(false)}
-              data-testid={`nav-${item.name.toLowerCase().replace(" ", "-")}`}
+              data-testid={`nav-${item.key.replace("nav_", "")}`}
             >
               <item.icon className="mr-2 h-4 w-4" />
-              {item.name}
+              {name}
             </Button>
           </Link>
         );
@@ -54,11 +71,14 @@ export function Layout({ children }: { children: React.ReactNode }) {
       <aside className="hidden md:flex w-64 flex-col border-r border-sidebar-border bg-sidebar px-4 py-6">
         <div className="flex items-center gap-2 px-2 mb-8 text-primary">
           <TerminalSquare className="h-6 w-6" />
-          <h1 className="text-xl font-bold tracking-tight">JB Proxy Admin</h1>
+          <h1 className="text-xl font-bold tracking-tight">{t("app_title")}</h1>
         </div>
         <nav className="flex-1">
           <NavLinks />
         </nav>
+        <div className="border-t border-sidebar-border pt-3 mt-3">
+          <LangToggle />
+        </div>
       </aside>
 
       {/* Mobile Header & Sidebar */}
@@ -77,9 +97,12 @@ export function Layout({ children }: { children: React.ReactNode }) {
             <SheetContent side="left" className="w-64 bg-sidebar border-sidebar-border p-6">
               <div className="flex items-center gap-2 mb-8 text-primary">
                 <TerminalSquare className="h-6 w-6" />
-                <h1 className="text-xl font-bold">JB Proxy Admin</h1>
+                <h1 className="text-xl font-bold">{t("app_title")}</h1>
               </div>
               <NavLinks />
+              <div className="border-t border-sidebar-border pt-3 mt-3">
+                <LangToggle />
+              </div>
             </SheetContent>
           </Sheet>
         </header>

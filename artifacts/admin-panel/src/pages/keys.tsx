@@ -2,16 +2,18 @@ import { useState } from "react";
 import { useGetClientKeys, usePutClientKeys, getGetClientKeysQueryKey } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter, DialogClose } from "@/components/ui/dialog";
 import { useToast } from "@/hooks/use-toast";
 import { Trash2, Plus, Copy, Eye, EyeOff, Key } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
+import { useLang } from "@/lib/i18n";
 
 export default function Keys() {
   const queryClient = useQueryClient();
   const { toast } = useToast();
+  const { t } = useLang();
   
   const { data: keys, isLoading } = useGetClientKeys();
   const putKeys = usePutClientKeys();
@@ -25,7 +27,7 @@ export default function Keys() {
     if (!keys || !newKey.trim()) return;
 
     if (keys.includes(newKey.trim())) {
-      toast({ title: "Duplicate Key", description: "This key already exists.", variant: "destructive" });
+      toast({ title: t("keys_duplicate"), description: t("keys_duplicate_desc"), variant: "destructive" });
       return;
     }
 
@@ -34,29 +36,29 @@ export default function Keys() {
     putKeys.mutate({ data: newKeys }, {
       onSuccess: () => {
         queryClient.invalidateQueries({ queryKey: getGetClientKeysQueryKey() });
-        toast({ title: "Key Added", description: "API key successfully created." });
+        toast({ title: t("keys_added"), description: t("keys_added_desc") });
         setIsAddOpen(false);
         setNewKey("");
       },
       onError: (err: any) => {
-        toast({ title: "Error", description: err.message || "Failed to add key.", variant: "destructive" });
+        toast({ title: t("keys_error"), description: err.message || t("keys_error"), variant: "destructive" });
       }
     });
   };
 
   const handleDelete = (index: number) => {
     if (!keys) return;
-    if (!confirm("Are you sure you want to delete this API key? Clients using it will lose access immediately.")) return;
+    if (!confirm(t("keys_delete_confirm"))) return;
 
     const newKeys = keys.filter((_, i) => i !== index);
     
     putKeys.mutate({ data: newKeys }, {
       onSuccess: () => {
         queryClient.invalidateQueries({ queryKey: getGetClientKeysQueryKey() });
-        toast({ title: "Key Deleted", description: "API key removed." });
+        toast({ title: t("keys_deleted") });
       },
       onError: (err: any) => {
-        toast({ title: "Error", description: err.message || "Failed to delete key.", variant: "destructive" });
+        toast({ title: t("keys_error"), description: err.message || t("keys_error"), variant: "destructive" });
       }
     });
   };
@@ -73,7 +75,7 @@ export default function Keys() {
 
   const copyToClipboard = (text: string) => {
     navigator.clipboard.writeText(text).then(() => {
-      toast({ title: "Copied", description: "Key copied to clipboard." });
+      toast({ title: t("keys_copied"), description: t("keys_copied_desc") });
     });
   };
 
@@ -81,8 +83,8 @@ export default function Keys() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-3xl font-bold tracking-tight">API Keys</h1>
-          <p className="text-muted-foreground mt-2">Manage client access tokens for your proxy endpoint.</p>
+          <h1 className="text-3xl font-bold tracking-tight">{t("keys_title")}</h1>
+          <p className="text-muted-foreground mt-2">{t("keys_desc")}</p>
         </div>
         
         <Dialog open={isAddOpen} onOpenChange={(open) => {
@@ -92,18 +94,18 @@ export default function Keys() {
           <DialogTrigger asChild>
             <Button data-testid="btn-add-key">
               <Plus className="mr-2 h-4 w-4" />
-              Generate Key
+              {t("keys_generate")}
             </Button>
           </DialogTrigger>
           <DialogContent className="sm:max-w-[400px]">
             <DialogHeader>
-              <DialogTitle>Add API Key</DialogTitle>
+              <DialogTitle>{t("keys_add_title")}</DialogTitle>
             </DialogHeader>
             <form onSubmit={handleAdd} className="space-y-4 py-4">
               <div className="space-y-2">
                 <div className="flex gap-2">
                   <Input 
-                    placeholder="sk-..." 
+                    placeholder={t("keys_placeholder")}
                     value={newKey} 
                     onChange={e => setNewKey(e.target.value)}
                     data-testid="input-new-key"
@@ -112,18 +114,18 @@ export default function Keys() {
                     type="button" 
                     variant="secondary"
                     onClick={() => setNewKey('sk-' + Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15))}
-                    title="Generate Random"
+                    title={t("keys_auto")}
                   >
-                    Auto
+                    {t("keys_auto")}
                   </Button>
                 </div>
               </div>
               <DialogFooter>
                 <DialogClose asChild>
-                  <Button type="button" variant="outline">Cancel</Button>
+                  <Button type="button" variant="outline">{t("keys_cancel")}</Button>
                 </DialogClose>
                 <Button type="submit" disabled={!newKey.trim() || putKeys.isPending} data-testid="btn-save-key">
-                  {putKeys.isPending ? 'Saving...' : 'Save Key'}
+                  {putKeys.isPending ? t("keys_saving") : t("keys_save")}
                 </Button>
               </DialogFooter>
             </form>
@@ -141,8 +143,8 @@ export default function Keys() {
         <Card className="border-dashed">
           <CardContent className="flex flex-col items-center justify-center h-48 text-center">
             <Key className="h-8 w-8 text-muted-foreground mb-4 opacity-50" />
-            <p className="text-muted-foreground">No API keys generated.</p>
-            <p className="text-sm text-muted-foreground mt-1">Create a key to authenticate your clients.</p>
+            <p className="text-muted-foreground">{t("keys_empty")}</p>
+            <p className="text-sm text-muted-foreground mt-1">{t("keys_empty_hint")}</p>
           </CardContent>
         </Card>
       ) : (
@@ -160,13 +162,13 @@ export default function Keys() {
                   </span>
                 </div>
                 <div className="flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity focus-within:opacity-100">
-                  <Button variant="ghost" size="icon" onClick={() => copyToClipboard(key)} title="Copy" data-testid={`btn-copy-${i}`}>
+                  <Button variant="ghost" size="icon" onClick={() => copyToClipboard(key)} title={t("keys_copy")} data-testid={`btn-copy-${i}`}>
                     <Copy className="h-4 w-4" />
                   </Button>
-                  <Button variant="ghost" size="icon" onClick={() => toggleReveal(i)} title={isRevealed ? "Hide" : "Reveal"} data-testid={`btn-reveal-${i}`}>
+                  <Button variant="ghost" size="icon" onClick={() => toggleReveal(i)} title={isRevealed ? t("keys_hide") : t("keys_reveal")} data-testid={`btn-reveal-${i}`}>
                     {isRevealed ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                   </Button>
-                  <Button variant="ghost" size="icon" onClick={() => handleDelete(i)} className="text-destructive hover:text-destructive hover:bg-destructive/10" title="Delete" data-testid={`btn-delete-${i}`}>
+                  <Button variant="ghost" size="icon" onClick={() => handleDelete(i)} className="text-destructive hover:text-destructive hover:bg-destructive/10" title={t("keys_delete")} data-testid={`btn-delete-${i}`}>
                     <Trash2 className="h-4 w-4" />
                   </Button>
                 </div>

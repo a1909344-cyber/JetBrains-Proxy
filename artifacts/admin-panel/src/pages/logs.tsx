@@ -2,11 +2,13 @@ import { useRef, useEffect, useState } from "react";
 import { useGetProxyLogs } from "@workspace/api-client-react";
 import { Button } from "@/components/ui/button";
 import { RefreshCcw, ScrollText } from "lucide-react";
+import { useLang } from "@/lib/i18n";
 
 export default function Logs() {
   const scrollRef = useRef<HTMLDivElement>(null);
   const [autoScroll, setAutoScroll] = useState(true);
-  const [linesToFetch, setLinesToFetch] = useState(100);
+  const [linesToFetch] = useState(100);
+  const { t } = useLang();
 
   const { data: logs, refetch, isFetching } = useGetProxyLogs(
     { lines: linesToFetch },
@@ -42,13 +44,13 @@ export default function Logs() {
     <div className="space-y-4 flex flex-col h-[calc(100vh-6rem)]">
       <div className="flex items-center justify-between shrink-0">
         <div>
-          <h1 className="text-3xl font-bold tracking-tight">System Logs</h1>
-          <p className="text-muted-foreground mt-1">Live proxy server execution logs.</p>
+          <h1 className="text-3xl font-bold tracking-tight">{t("logs_title")}</h1>
+          <p className="text-muted-foreground mt-1">{t("logs_desc")}</p>
         </div>
         
         <div className="flex items-center gap-4">
           <div className="text-xs text-muted-foreground font-mono">
-            {logs?.lines?.length || 0} lines fetched
+            {logs?.lines?.length || 0} {t("logs_lines")}
           </div>
           <Button 
             variant="outline" 
@@ -58,7 +60,7 @@ export default function Logs() {
             data-testid="btn-refresh-logs"
           >
             <RefreshCcw className={`mr-2 h-4 w-4 ${isFetching ? 'animate-spin' : ''}`} />
-            Refresh
+            {t("logs_refresh")}
           </Button>
         </div>
       </div>
@@ -72,7 +74,7 @@ export default function Logs() {
           <div className="flex items-center gap-2">
             <span className="flex items-center gap-1.5 cursor-pointer select-none" onClick={() => setAutoScroll(!autoScroll)}>
               <span className={`h-2 w-2 rounded-full ${autoScroll ? 'bg-primary' : 'bg-muted-foreground'}`}></span>
-              Auto-scroll
+              {t("logs_autoscroll")}
             </span>
           </div>
         </div>
@@ -90,7 +92,7 @@ export default function Logs() {
             ))
           ) : (
             <div className="flex items-center justify-center h-full text-muted-foreground italic">
-              {logs?.note || 'No logs available.'}
+              {logs?.note || t("logs_empty")}
             </div>
           )}
         </div>
