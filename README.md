@@ -1,119 +1,233 @@
 # JetBrains AI Proxy
 
-A self-hosted reverse proxy for JetBrains AI API with an admin management panel.
+一个自托管的 JetBrains AI API 反代服务，附带完整的 Web 管理面板。
 
-## Architecture
+A self-hosted reverse proxy for JetBrains AI API with a full-featured web admin panel.
 
-| Service | Port | Description |
-|---------|------|-------------|
-| Python Proxy | 8000 | Core proxy — forwards requests to JetBrains AI |
-| API Server | 8080 | TypeScript/Express admin API |
-| Admin Panel | 20130 | React/Vite web admin interface |
+---
 
-## Quick Start (Local)
+## 功能 Features
 
-### Prerequisites
+- **OpenAI 兼容接口** — 无缝替换 GPT API，支持主流 AI 客户端（Cursor、Continue、Open WebUI 等）
+- **多账号轮询** — 支持配置多个 JetBrains 账号，自动轮换使用
+- **自动 Token 刷新** — OAuth 账号每 50 分钟自动刷新 id_token，无需手动维护
+- **Web 管理面板** — 可视化管理账号、API 密钥、模型映射、查看日志
+- **密码登录 + 全自动激活** — 输入邮箱密码，自动完成登录、试用激活、License 绑定
+- **管理员认证** — 面板受密码保护，安全对外暴露
 
-- Python 3.11+
-- Node.js 20+ and pnpm 9+
+---
 
-### 1. Clone and install
+## 架构 Architecture
 
-```bash
-git clone <your-repo-url>
-cd <repo>
-pnpm install
+```
+┌─────────────────────────────────────────────┐
+│  AI Client (Cursor / Continue / WebUI ...)   │
+│  Authorization: Bearer sk-your-key           │
+└────────────────────┬────────────────────────┘
+                     │ /v1/chat/completions
+                     ▼
+┌─────────────────────────────────────────────┐
+│  Python Proxy  :8000                         │
+│  FastAPI — 轮询 JetBrains 账号, 转发请求     │
+└────────────────────┬────────────────────────┘
+                     │
+         ┌───────────┴──────────┐
+         ▼                      ▼
+  JetBrains AI Account 1   Account 2 ...
+  (JWT / OAuth token)
+
+┌─────────────────────────────────────────────┐
+│  API Server  :8080                           │
+│  Express — 管理 CRUD、账号操作、OAuth 流程   │
+└─────────────────────────────────────────────┘
+
+┌─────────────────────────────────────────────┐
+│  Admin Panel  :20130                         │
+│  React + Vite — 可视化管理界面               │
+└─────────────────────────────────────────────┘
 ```
 
-### 2. Configure secrets
+| 服务 | 端口 | 说明 |
+|------|------|------|
+| Python Proxy | 8000 | 核心代理，转发请求到 JetBrains AI |
+| API Server | 8080 | TypeScript/Express 管理 API |
+| Admin Panel | 20130 | React/Vite 管理面板 |
 
-Copy the example files and fill in your data:
+---
+
+## 快速开始 Quick Start
+
+### 前置要求
+
+- Python 3.11+
+- Node.js 20+ 和 pnpm 9+
+
+### 1. 克隆并安装依赖
 
 ```bash
+git clone https://github.com/your-username/jetbrains-ai-proxy.git
+cd jetbrains-ai-proxy
+pnpm install
+pip install -r python/proxy/requirements.txt
+```
+
+### 2. 配置数据文件
+
+```bash
+# 复制示例文件
 cp python/proxy/jetbrainsai.json.example python/proxy/jetbrainsai.json
 cp python/proxy/client_api_keys.json.example python/proxy/client_api_keys.json
 ```
 
-Set environment variables:
+### 3. 设置环境变量
 
 ```bash
-export SESSION_SECRET="your-random-secret-string"
-export ADMIN_PASSWORD="your-admin-panel-password"
+export SESSION_SECRET="your-random-secret-64chars"   # 任意随机字符串
+export ADMIN_PASSWORD="your-strong-admin-password"   # 管理面板登录密码
 ```
 
-Or create a `.env` file (loaded by the start script).
+也可以创建 `.env` 文件（不会被提交到 git）：
 
-### 3. Start all services
+```env
+SESSION_SECRET=your-random-secret-64chars
+ADMIN_PASSWORD=your-strong-admin-password
+```
+
+### 4. 启动所有服务
+
+**方式一：分终端启动**
 
 ```bash
-# Terminal 1 — Python proxy
+# 终端 1 — Python 代理
 cd python/proxy && python3 main.py
 
-# Terminal 2 — API server
+# 终端 2 — API 服务器
 PORT=8080 BASE_PATH=/api pnpm --filter @workspace/api-server run dev
 
-# Terminal 3 — Admin panel
+# 终端 3 — 管理面板
 PORT=20130 BASE_PATH=/admin-panel pnpm --filter @workspace/admin-panel run dev
 ```
 
-Open [http://localhost:20130](http://localhost:20130) and log in with your `ADMIN_PASSWORD`.
+**方式二：一键启动脚本（推荐）**
 
-## Admin Panel Features
+```bash
+bash scripts/start.sh
+```
 
-- **Dashboard** — Proxy status, account count, API key count, model count
-- **Accounts** — Manage JetBrains AI accounts (password login, OAuth PKCE)
-- **API Keys** — Manage client access keys for the proxy
-- **Models** — Configure model name mappings
-- **API Tester** — Test the proxy endpoint directly from the panel
-- **Logs** — Live proxy server logs
+访问管理面板：[http://localhost:20130](http://localhost:20130)，使用 `ADMIN_PASSWORD` 登录。
 
-## Adding JetBrains Accounts
+---
 
-In the admin panel, go to **Accounts → Add Account** and use one of:
+## 添加 JetBrains 账号
 
-1. **Password Login** (recommended) — enter JetBrains email/password, the system automatically logs in, activates a trial, and sets up the license.
-2. **OAuth Login** — copy the OAuth URL, authorize in your browser, paste the callback URL back.
+在管理面板 **账号 → 添加账号** 中，有两种方式：
 
-## Environment Variables
+### 方式一：账号密码登录（推荐 · 全自动）
 
-| Variable | Required | Description |
-|----------|----------|-------------|
-| `SESSION_SECRET` | Yes | Secret for signing tokens (random string) |
-| `ADMIN_PASSWORD` | Yes | Admin panel login password |
-| `PORT` | Yes | Port for each service (set per process) |
+输入 JetBrains 邮箱和密码，系统自动：
+1. 登录账号
+2. 激活 AI 试用（如未激活）
+3. 绑定 License
+4. 保存 Token 并开始使用
 
-## Data Files (not committed to git)
+### 方式二：OAuth 授权
 
-| File | Description |
-|------|-------------|
-| `python/proxy/jetbrainsai.json` | JetBrains account credentials (auto-managed) |
-| `python/proxy/client_api_keys.json` | Client API keys |
-| `python/proxy/usage_stats.json` | Usage statistics |
+1. 点击「获取 JetBrains 授权链接」
+2. 在浏览器中访问链接完成授权
+3. 授权后浏览器跳转到 `http://localhost:3000/?code=...`
+4. 复制完整 URL 粘贴回面板
 
-## Deploying to Production
+OAuth 账号的 Token 每 50 分钟自动刷新，无需手动维护。
 
-For production, set `ADMIN_PASSWORD` and `SESSION_SECRET` as environment variables on your hosting platform. The admin panel can be served behind a reverse proxy (nginx, Caddy, etc.) with TLS.
+---
 
-Example nginx config:
+## 代理使用方法
+
+代理兼容 OpenAI API 格式，将 `api.openai.com` 替换为你的服务地址即可。
+
+```bash
+# 列出可用模型
+curl http://localhost:8000/v1/models \
+  -H "Authorization: Bearer sk-your-key"
+
+# 发送对话请求
+curl http://localhost:8000/v1/chat/completions \
+  -H "Authorization: Bearer sk-your-key" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model": "anthropic-claude-4-5-sonnet",
+    "messages": [{"role": "user", "content": "Hello!"}]
+  }'
+```
+
+客户端 API Key 在管理面板 **API 密钥** 页面管理。
+
+---
+
+## 生产部署
+
+### 环境变量
+
+| 变量 | 必填 | 说明 |
+|------|------|------|
+| `SESSION_SECRET` | ✅ | Token 签名密钥（随机字符串，至少 32 位） |
+| `ADMIN_PASSWORD` | ✅ | 管理面板登录密码 |
+| `VITE_API_SERVER_URL` | 可选 | 自定义 API Server URL（本地开发时不需要） |
+
+### Nginx 反代配置示例
 
 ```nginx
 server {
     listen 443 ssl;
     server_name your-domain.com;
 
-    # Admin panel
-    location /admin-panel {
+    # 管理面板
+    location / {
         proxy_pass http://localhost:20130;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
     }
 
-    # API server
+    # API Server
     location /api {
         proxy_pass http://localhost:8080;
+        proxy_set_header Host $host;
     }
 
-    # Proxy endpoint (for AI clients)
+    # AI 代理接口（供 AI 客户端使用）
     location /v1 {
         proxy_pass http://localhost:8000;
+        proxy_set_header Host $host;
     }
 }
 ```
+
+---
+
+## 数据文件说明
+
+这些文件包含敏感信息，**不会被提交到 git**（已加入 `.gitignore`）：
+
+| 文件 | 说明 |
+|------|------|
+| `python/proxy/jetbrainsai.json` | JetBrains 账号凭证（自动管理） |
+| `python/proxy/client_api_keys.json` | 客户端 API 密钥 |
+| `python/proxy/usage_stats.json` | 使用统计（自动生成） |
+
+首次部署时从 `.example` 文件复制，然后通过管理面板添加账号。
+
+---
+
+## 技术栈
+
+- **Python**: FastAPI（代理核心）
+- **TypeScript/Node.js**: Express 5（管理 API）
+- **前端**: React + Vite + shadcn/ui + Tailwind CSS
+- **包管理**: pnpm workspaces（monorepo）
+- **认证**: HMAC-SHA256 token（Bearer token 方案）
+
+---
+
+## License
+
+MIT
