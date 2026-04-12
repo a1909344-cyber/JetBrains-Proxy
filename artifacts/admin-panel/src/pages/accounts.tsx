@@ -5,11 +5,14 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Switch } from "@/components/ui/switch";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter, DialogClose } from "@/components/ui/dialog";
 import { useToast } from "@/hooks/use-toast";
-import { Trash2, Edit, Plus, CheckCircle2, XCircle, Clock } from "lucide-react";
+import { Trash2, Edit, Plus, CheckCircle2, XCircle, Clock, Power } from "lucide-react";
 import { JetbrainsAccount } from "@workspace/api-client-react/src/generated/api.schemas";
 import { Skeleton } from "@/components/ui/skeleton";
+
+type AccountWithEnabled = JetbrainsAccount & { enabled?: boolean };
 
 export default function Accounts() {
   const queryClient = useQueryClient();
@@ -21,22 +24,37 @@ export default function Accounts() {
   const [isAddOpen, setIsAddOpen] = useState(false);
   const [editingIndex, setEditingIndex] = useState<number | null>(null);
   
-  const [formData, setFormData] = useState<JetbrainsAccount>({
+  const [formData, setFormData] = useState<AccountWithEnabled>({
     jwt: "",
     licenseId: "",
     authorization: "",
+    enabled: true,
   });
+
+  const saveAccounts = (newAccounts: AccountWithEnabled[], successMsg?: string) => {
+    putAccounts.mutate({ data: newAccounts }, {
+      onSuccess: () => {
+        queryClient.invalidateQueries({ queryKey: getGetJetbrainsAccountsQueryKey() });
+        toast({ title: successMsg || "Saved", description: "Accounts updated successfully." });
+      },
+      onError: (err: any) => {
+        toast({ title: "Error", description: err.message || "Failed to save accounts.", variant: "destructive" });
+      }
+    });
+  };
 
   const handleSave = (e: React.FormEvent) => {
     e.preventDefault();
     if (!accounts) return;
 
-    let newAccounts = [...accounts];
-    const accountToSave = {
+    const typedAccounts = accounts as AccountWithEnabled[];
+    let newAccounts = [...typedAccounts];
+    const accountToSave: AccountWithEnabled = {
       ...formData,
       jwt: formData.jwt || null,
       licenseId: formData.licenseId || null,
       authorization: formData.authorization || null,
+      enabled: formData.enabled !== false,
     };
 
     if (editingIndex !== null) {
@@ -48,13 +66,13 @@ export default function Accounts() {
     putAccounts.mutate({ data: newAccounts }, {
       onSuccess: () => {
         queryClient.invalidateQueries({ queryKey: getGetJetbrainsAccountsQueryKey() });
-        toast({ title: "Accounts Saved", description: "JetBrains accounts have been updated." });
+        toast({ title: "Account Saved", description: "JetBrains account updated." });
         setIsAddOpen(false);
         setEditingIndex(null);
-        setFormData({ jwt: "", licenseId: "", authorization: "" });
+        setFormData({ jwt: "", licenseId: "", authorization: "", enabled: true });
       },
       onError: (err: any) => {
-        toast({ title: "Error", description: err.message || "Failed to save accounts.", variant: "destructive" });
+        toast({ title: "Error", description: err.message || "Failed to save.", variant: "destructive" });
       }
     });
   };
@@ -62,32 +80,35 @@ export default function Accounts() {
   const handleDelete = (index: number) => {
     if (!accounts) return;
     if (!confirm("Are you sure you want to delete this account?")) return;
+    const newAccounts = (accounts as AccountWithEnabled[]).filter((_, i) => i !== index);
+    saveAccounts(newAccounts, "Account Deleted");
+  };
 
-    const newAccounts = accounts.filter((_, i) => i !== index);
-    
-    putAccounts.mutate({ data: newAccounts }, {
-      onSuccess: () => {
-        queryClient.invalidateQueries({ queryKey: getGetJetbrainsAccountsQueryKey() });
-        toast({ title: "Account Deleted", description: "JetBrains account removed." });
-      },
-      onError: (err: any) => {
-        toast({ title: "Error", description: err.message || "Failed to delete account.", variant: "destructive" });
-      }
+  const handleToggleEnabled = (index: number) => {
+    if (!accounts) return;
+    const typedAccounts = accounts as AccountWithEnabled[];
+    const newAccounts = typedAccounts.map((acc, i) => {
+      if (i !== index) return acc;
+      return { ...acc, enabled: acc.enabled === false ? true : false };
     });
+    const isNowEnabled = newAccounts[index].enabled !== false;
+    saveAccounts(newAccounts, isNowEnabled ? "Account Enabled" : "Account Disabled");
   };
 
   const openEdit = (index: number) => {
     if (!accounts) return;
+    const acc = accounts[index] as AccountWithEnabled;
     setFormData({
-      jwt: accounts[index].jwt || "",
-      licenseId: accounts[index].licenseId || "",
-      authorization: accounts[index].authorization || "",
+      jwt: acc.jwt || "",
+      licenseId: acc.licenseId || "",
+      authorization: acc.authorization || "",
+      enabled: acc.enabled !== false,
     });
     setEditingIndex(index);
     setIsAddOpen(true);
   };
 
-  const getMode = (acc: JetbrainsAccount) => {
+  const getMode = (acc: AccountWithEnabled) => {
     if (acc.jwt) return "JWT Only";
     if (acc.licenseId && acc.authorization) return "License + Auth";
     return "Incomplete";
@@ -98,19 +119,21 @@ export default function Accounts() {
     return new Date(ts * 1000).toLocaleString();
   };
 
+  const isEnabled = (acc: AccountWithEnabled) => acc.enabled !== false;
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-3xl font-bold tracking-tight">JetBrains Accounts</h1>
-          <p className="text-muted-foreground mt-2">Manage auth configurations for the proxy pool.</p>
+          <p className="text-muted-foreground mt-2">Manage auth configurations for the proxy pool. Only enabled accounts are used.</p>
         </div>
         
         <Dialog open={isAddOpen} onOpenChange={(open) => {
           setIsAddOpen(open);
           if (!open) {
             setEditingIndex(null);
-            setFormData({ jwt: "", licenseId: "", authorization: "" });
+            setFormData({ jwt: "", licenseId: "", authorization: "", enabled: true });
           }
         }}>
           <DialogTrigger asChild>
@@ -165,6 +188,15 @@ export default function Accounts() {
                   data-testid="input-auth"
                 />
               </div>
+
+              <div className="flex items-center gap-3 pt-2 border-t border-border">
+                <Switch
+                  id="enabled"
+                  checked={formData.enabled !== false}
+                  onCheckedChange={v => setFormData({...formData, enabled: v})}
+                />
+                <Label htmlFor="enabled" className="cursor-pointer">Account enabled</Label>
+              </div>
               
               <DialogFooter>
                 <DialogClose asChild>
@@ -193,57 +225,79 @@ export default function Accounts() {
         </Card>
       ) : (
         <div className="grid gap-4 grid-cols-1 xl:grid-cols-2">
-          {accounts?.map((acc, i) => (
-            <Card key={i} className="flex flex-col border-border bg-card shadow-sm hover-elevate transition-all" data-testid={`card-account-${i}`}>
-              <CardHeader className="flex flex-row items-start justify-between pb-2">
-                <div>
-                  <CardTitle className="text-lg flex items-center gap-2">
-                    Account {i + 1}
-                    <span className="text-xs px-2 py-0.5 bg-secondary text-secondary-foreground rounded-full border border-secondary-border font-mono font-normal">
-                      {getMode(acc)}
-                    </span>
-                  </CardTitle>
-                  <CardDescription className="mt-1 flex items-center gap-4">
-                    {acc.has_quota !== undefined && (
-                      <span className="flex items-center gap-1">
-                        {acc.has_quota ? (
-                          <><CheckCircle2 className="h-3 w-3 text-primary" /> Quota Available</>
-                        ) : (
-                          <><XCircle className="h-3 w-3 text-destructive" /> No Quota</>
-                        )}
+          {(accounts as AccountWithEnabled[])?.map((acc, i) => {
+            const enabled = isEnabled(acc);
+            return (
+              <Card
+                key={i}
+                className={`flex flex-col border-border bg-card shadow-sm transition-all ${!enabled ? 'opacity-50' : 'hover-elevate'}`}
+                data-testid={`card-account-${i}`}
+              >
+                <CardHeader className="flex flex-row items-start justify-between pb-2">
+                  <div className="flex-1 min-w-0">
+                    <CardTitle className="text-lg flex items-center gap-2 flex-wrap">
+                      Account {i + 1}
+                      <span className="text-xs px-2 py-0.5 bg-secondary text-secondary-foreground rounded-full border border-secondary-border font-mono font-normal">
+                        {getMode(acc)}
                       </span>
-                    )}
-                  </CardDescription>
-                </div>
-                <div className="flex gap-2">
-                  <Button variant="outline" size="icon" onClick={() => openEdit(i)} data-testid={`btn-edit-${i}`}>
-                    <Edit className="h-4 w-4" />
-                  </Button>
-                  <Button variant="destructive" size="icon" onClick={() => handleDelete(i)} data-testid={`btn-delete-${i}`}>
-                    <Trash2 className="h-4 w-4" />
-                  </Button>
-                </div>
-              </CardHeader>
-              <CardContent className="pt-2 text-sm grid gap-2">
-                {acc.jwt && (
-                  <div className="grid grid-cols-[120px_1fr] items-center gap-2">
-                    <span className="text-muted-foreground font-mono">JWT:</span>
-                    <span className="font-mono truncate">{acc.jwt.substring(0, 15)}...</span>
+                      {!enabled && (
+                        <span className="text-xs px-2 py-0.5 bg-destructive/10 text-destructive rounded-full border border-destructive/20 font-normal">
+                          Disabled
+                        </span>
+                      )}
+                    </CardTitle>
+                    <CardDescription className="mt-1 flex items-center gap-4">
+                      {acc.has_quota !== undefined && (
+                        <span className="flex items-center gap-1">
+                          {acc.has_quota ? (
+                            <><CheckCircle2 className="h-3 w-3 text-primary" /> Quota Available</>
+                          ) : (
+                            <><XCircle className="h-3 w-3 text-destructive" /> No Quota</>
+                          )}
+                        </span>
+                      )}
+                    </CardDescription>
                   </div>
-                )}
-                {acc.licenseId && (
-                  <div className="grid grid-cols-[120px_1fr] items-center gap-2">
-                    <span className="text-muted-foreground font-mono">License ID:</span>
-                    <span className="font-mono truncate">{acc.licenseId}</span>
+                  <div className="flex gap-2 ml-2 shrink-0">
+                    <Button
+                      variant="outline"
+                      size="icon"
+                      onClick={() => handleToggleEnabled(i)}
+                      title={enabled ? "Disable account" : "Enable account"}
+                      className={enabled ? "text-primary border-primary/30 hover:bg-primary/10" : "text-muted-foreground"}
+                      data-testid={`btn-toggle-${i}`}
+                    >
+                      <Power className="h-4 w-4" />
+                    </Button>
+                    <Button variant="outline" size="icon" onClick={() => openEdit(i)} data-testid={`btn-edit-${i}`}>
+                      <Edit className="h-4 w-4" />
+                    </Button>
+                    <Button variant="destructive" size="icon" onClick={() => handleDelete(i)} data-testid={`btn-delete-${i}`}>
+                      <Trash2 className="h-4 w-4" />
+                    </Button>
                   </div>
-                )}
-                <div className="grid grid-cols-[120px_1fr] items-center gap-2 text-xs text-muted-foreground mt-4 border-t border-border pt-4">
-                  <span className="flex items-center gap-1"><Clock className="h-3 w-3" /> Last Used:</span>
-                  <span>{formatDate(acc.last_updated)}</span>
-                </div>
-              </CardContent>
-            </Card>
-          ))}
+                </CardHeader>
+                <CardContent className="pt-2 text-sm grid gap-2">
+                  {acc.jwt && (
+                    <div className="grid grid-cols-[120px_1fr] items-center gap-2">
+                      <span className="text-muted-foreground font-mono">JWT:</span>
+                      <span className="font-mono truncate">{acc.jwt.substring(0, 20)}...</span>
+                    </div>
+                  )}
+                  {acc.licenseId && (
+                    <div className="grid grid-cols-[120px_1fr] items-center gap-2">
+                      <span className="text-muted-foreground font-mono">License ID:</span>
+                      <span className="font-mono truncate">{acc.licenseId}</span>
+                    </div>
+                  )}
+                  <div className="grid grid-cols-[120px_1fr] items-center gap-2 text-xs text-muted-foreground mt-4 border-t border-border pt-4">
+                    <span className="flex items-center gap-1"><Clock className="h-3 w-3" /> Last Used:</span>
+                    <span>{formatDate(acc.last_updated)}</span>
+                  </div>
+                </CardContent>
+              </Card>
+            );
+          })}
         </div>
       )}
     </div>

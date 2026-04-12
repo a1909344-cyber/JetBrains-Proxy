@@ -279,6 +279,7 @@ def load_jetbrains_accounts():
                     "last_updated": account.get("last_updated", 0),
                     "has_quota": account.get("has_quota", True),
                     "last_quota_check": account.get("last_quota_check", 0),
+                    "enabled": account.get("enabled", True),
                 }
             )
 
@@ -485,6 +486,10 @@ async def get_next_jetbrains_account() -> dict:
             current_account_index = (current_account_index + 1) % len(
                 JETBRAINS_ACCOUNTS
             )
+
+            # 跳过被手动禁用的账户
+            if not account.get("enabled", True):
+                continue
 
             # 如果状态是 stale，检查配额
             is_quota_stale = (
