@@ -368,7 +368,11 @@ export default function Accounts() {
         : "";
 
       const raw = JSON.stringify(result.data, null, 2);
-      const debugJson = JSON.stringify(result.debug, null, 2);
+      const debugJson = result.debug
+        ? JSON.stringify(result.debug, null, 2)
+        : result.error
+          ? `Request failed with error:\n${result.error}`
+          : "(no debug info available)";
       const detail = ok
         ? `JWT 获取成功！${stateNote ? "\n注意：" + stateNote : ""}`
         : hasToken === false

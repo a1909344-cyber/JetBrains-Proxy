@@ -143,16 +143,17 @@ cp .env.example .env
 ```env
 # 管理面板登录密码
 ADMIN_PASSWORD=your-strong-password
-
-# 用于签名管理员 Token 的随机字符串（至少 32 位）
-SESSION_SECRET=your-random-secret-string-at-least-32-chars
 ```
 
 可选配置：
 
 ```env
+# 用于签名管理员 Token 的随机字符串（至少 32 位）
+# 若不填，首次启动会自动生成并保存到数据卷，重启后不失效
+# SESSION_SECRET=your-random-secret-string-at-least-32-chars
+
 # 对外暴露的 HTTP 端口（默认 80）
-HTTP_PORT=80
+# HTTP_PORT=80
 ```
 
 ### 3. 初始化数据文件

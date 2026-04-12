@@ -390,7 +390,24 @@ router.post("/admin/test-jwt-refresh", async (req, res) => {
       },
     });
   } catch (e: unknown) {
-    res.json({ status: 0, error: e instanceof Error ? e.message : String(e), ok: false });
+    // Include debug info even on error so the frontend can display what was attempted
+    const sentHeaders = { ...requestHeaders };
+    if (sentHeaders.authorization) {
+      const tok = sentHeaders.authorization.replace("Bearer ", "");
+      sentHeaders.authorization = `Bearer ${tok.slice(0, 8)}...(redacted)`;
+    }
+    const errMsg = e instanceof Error ? e.message : String(e);
+    res.json({
+      status: 0,
+      error: errMsg,
+      ok: false,
+      debug: {
+        url,
+        sentHeaders,
+        sentBody: requestBody,
+        note: `Request failed: ${errMsg}`,
+      },
+    });
   }
 });
 

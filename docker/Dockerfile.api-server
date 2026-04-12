@@ -17,6 +17,10 @@ RUN pnpm --filter @workspace/api-server run build
 # ── Stage 2: Production image ────────────────────────────────────────────────
 FROM node:20-slim
 
+# Install CA certificates so Node.js fetch() can validate HTTPS connections
+# (node:20-slim strips many packages; this ensures TLS works for external requests)
+RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates && rm -rf /var/lib/apt/lists/*
+
 WORKDIR /app
 
 # Only copy the bundled output — esbuild inlines all dependencies
