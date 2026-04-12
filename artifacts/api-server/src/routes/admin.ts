@@ -149,8 +149,11 @@ router.get("/admin/status", async (req, res) => {
 
   // Use the first configured client API key so we get a real 200 response
   // (without a key the proxy returns 401, making status misleading)
+  // client_api_keys.json may be a plain string array ["sk-xxx"] or object array [{key:"sk-xxx"}]
   const firstKey = Array.isArray(keysData) && keysData.length > 0
-    ? (keysData[0] as Record<string, unknown>)?.key as string | undefined
+    ? (typeof keysData[0] === "string"
+        ? keysData[0] as string
+        : (keysData[0] as Record<string, unknown>)?.key as string | undefined)
     : undefined;
 
   try {
