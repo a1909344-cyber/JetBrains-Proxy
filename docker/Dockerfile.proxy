@@ -1,0 +1,16 @@
+FROM python:3.11-slim
+
+WORKDIR /data
+
+COPY python/proxy/requirements.txt /tmp/requirements.txt
+RUN pip install --no-cache-dir -r /tmp/requirements.txt
+
+COPY python/proxy/main.py /app/main.py
+
+# models.json is copied as a default; it will be overridden by the mounted
+# proxy-data volume at /data once initialized via the admin panel.
+COPY python/proxy/models.json /data/models.json
+
+EXPOSE 8000
+
+CMD ["python3", "/app/main.py"]

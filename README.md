@@ -118,6 +118,97 @@ bash scripts/start.sh
 
 ---
 
+## Docker 部署 Docker Deployment
+
+最简单的生产部署方式，三个服务一键启动。
+
+The easiest way to deploy in production — all three services with a single command.
+
+### 1. 克隆仓库
+
+```bash
+git clone https://github.com/ydddp/JetBrains-UI.git
+cd JetBrains-UI
+```
+
+### 2. 配置环境变量
+
+```bash
+cp .env.example .env
+# 编辑 .env，填写必填项
+```
+
+`.env` 必填项：
+
+```env
+# 管理面板登录密码
+ADMIN_PASSWORD=your-strong-password
+
+# 用于签名管理员 Token 的随机字符串（至少 32 位）
+SESSION_SECRET=your-random-secret-string-at-least-32-chars
+```
+
+可选配置：
+
+```env
+# 对外暴露的 HTTP 端口（默认 80）
+HTTP_PORT=80
+```
+
+### 3. 初始化数据文件
+
+首次部署需要准备初始配置文件。
+
+**方式 A（无 JetBrains 账号，等进面板添加）：**
+
+```bash
+# 仅需 client_api_keys.json（客户端 API 密钥列表）
+echo '["sk-your-api-key"]' > python/proxy/client_api_keys.json
+```
+
+**方式 B（已有 jetbrainsai.json）：**
+
+```bash
+cp python/proxy/jetbrainsai.json.example python/proxy/jetbrainsai.json
+cp python/proxy/client_api_keys.json.example python/proxy/client_api_keys.json
+# 编辑这两个文件填入真实账号信息
+```
+
+### 4. 构建并启动
+
+```bash
+docker compose up -d --build
+```
+
+首次构建需要几分钟（pnpm install + esbuild）。启动后访问：
+
+- **管理面板** → http://localhost（或你配置的 HTTP_PORT）
+- **AI 代理接口** → http://localhost/v1
+
+### 5. 管理面板添加账号
+
+访问管理面板，使用 `ADMIN_PASSWORD` 登录，然后在「账号」页面添加 JetBrains 账号。
+
+### 常用命令
+
+```bash
+# 查看日志
+docker compose logs -f
+
+# 重启服务
+docker compose restart
+
+# 停止服务
+docker compose down
+
+# 备份数据（重要！）
+docker compose cp api-server:/data ./backup-$(date +%Y%m%d)
+```
+
+> **数据持久化**：账号凭证和配置保存在 Docker named volume `proxy-data` 中，删除容器不会丢失数据，但 `docker compose down -v` 会清除数据，请注意备份。
+
+---
+
 ## 添加 JetBrains 账号
 
 在管理面板 **账号 → 添加账号** 中，有两种方式：

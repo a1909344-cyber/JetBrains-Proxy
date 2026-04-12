@@ -1,0 +1,41 @@
+# Version control
+.git/
+.gitignore
+
+# Local dev configs and secrets
+.env
+.env.*
+!.env.example
+python/proxy/jetbrainsai.json
+python/proxy/client_api_keys.json
+python/proxy/usage_stats.json
+python/proxy/proxy.log
+
+# Build outputs (will be rebuilt in Docker)
+artifacts/*/dist/
+artifacts/*/.vite/
+lib/*/dist/
+node_modules/
+**/node_modules/
+
+# Replit-specific
+.local/
+.replit
+.breakpoints
+replit.nix
+
+# Logs and temp files
+*.log
+*.tmp
+npm-debug.log*
+pnpm-debug.log*
+
+# Mockup sandbox
+artifacts/mockup-sandbox/
+
+# Python caches
+__pycache__/
+*.py[cod]
+*.pyo
+.venv/
+venv/

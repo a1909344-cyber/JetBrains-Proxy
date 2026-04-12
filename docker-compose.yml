@@ -1,0 +1,60 @@
+services:
+
+  # ── Python proxy: JetBrains AI adapter ──────────────────────────────────────
+  proxy:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.proxy
+    restart: unless-stopped
+    volumes:
+      - proxy-data:/data
+    healthcheck:
+      test: ["CMD", "python3", "-c", "import socket; s=socket.socket(); s.settimeout(3); s.connect(('localhost', 8000)); s.close()"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 15s
+
+  # ── API server: admin management API ────────────────────────────────────────
+  api-server:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.api-server
+    restart: unless-stopped
+    depends_on:
+      proxy:
+        condition: service_healthy
+    environment:
+      PORT: "8080"
+      NODE_ENV: production
+      SESSION_SECRET: ${SESSION_SECRET:?SESSION_SECRET is required}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:?ADMIN_PASSWORD is required}
+      DATA_DIR: /data
+      LOG_FILE: /data/proxy.log
+      PROXY_INTERNAL_URL: http://proxy:8000
+    volumes:
+      - proxy-data:/data
+    healthcheck:
+      test: ["CMD", "node", "-e", "require('http').get('http://localhost:8080/api/healthz', r => process.exit(r.statusCode === 200 ? 0 : 1)).on('error', () => process.exit(1))"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
+
+  # ── Nginx: admin panel frontend + reverse proxy ──────────────────────────────
+  nginx:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.nginx
+    restart: unless-stopped
+    ports:
+      - "${HTTP_PORT:-80}:80"
+    depends_on:
+      api-server:
+        condition: service_healthy
+
+volumes:
+  proxy-data:
+    # Stores: jetbrainsai.json, client_api_keys.json, models.json, usage_stats.json, proxy.log
+    # This volume persists account credentials and configuration across restarts.
+    # Back this up regularly!
