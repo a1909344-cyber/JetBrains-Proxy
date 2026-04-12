@@ -11,6 +11,7 @@ const translations = {
     nav_models: "模型",
     nav_tester: "接口测试",
     nav_logs: "日志",
+    nav_stats: "使用统计",
     app_title: "JB 代理管理",
 
     // Dashboard
@@ -248,6 +249,7 @@ const translations = {
     nav_models: "Models",
     nav_tester: "API Tester",
     nav_logs: "Logs",
+    nav_stats: "Usage Stats",
     app_title: "JB Proxy Admin",
 
     // Dashboard

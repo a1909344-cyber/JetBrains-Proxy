@@ -16,6 +16,7 @@ import Keys from "@/pages/keys";
 import Models from "@/pages/models";
 import Test from "@/pages/test";
 import Logs from "@/pages/logs";
+import Stats from "@/pages/stats";
 
 const queryClient = new QueryClient();
 
@@ -29,6 +30,7 @@ function Router({ onLogout }: { onLogout: () => void }) {
         <Route path="/models" component={Models} />
         <Route path="/test" component={Test} />
         <Route path="/logs" component={Logs} />
+        <Route path="/stats" component={Stats} />
         <Route component={NotFound} />
       </Switch>
     </Layout>

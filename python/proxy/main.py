@@ -276,7 +276,7 @@ async def _save_usage_stats():
             print(f"保存 usage_stats.json 时出错: {e}")
 
 
-async def _record_usage(account: dict, input_chars: int, output_chars: int):
+async def _record_usage(account: dict, input_chars: int, output_chars: int, client_key: Optional[str] = None):
     """增加账户的调用统计并异步保存"""
     key = _account_key(account)
     if key not in usage_stats:
@@ -293,6 +293,25 @@ async def _record_usage(account: dict, input_chars: int, output_chars: int):
     entry["input_chars"] += input_chars
     entry["output_chars"] += output_chars
     entry["last_call_at"] = time.time()
+
+    # Per-client-key tracking
+    if client_key:
+        ckey = f"apikey:{client_key}"
+        if ckey not in usage_stats:
+            usage_stats[ckey] = {
+                "label": client_key,
+                "call_count": 0,
+                "input_chars": 0,
+                "output_chars": 0,
+                "last_call_at": 0.0,
+            }
+        centry = usage_stats[ckey]
+        centry["label"] = client_key
+        centry["call_count"] += 1
+        centry["input_chars"] += input_chars
+        centry["output_chars"] += output_chars
+        centry["last_call_at"] = time.time()
+
     asyncio.create_task(_save_usage_stats())
 
 
@@ -300,6 +319,7 @@ async def _tracking_stream(
     stream: AsyncGenerator[str, None],
     account: dict,
     input_chars: int,
+    client_key: Optional[str] = None,
 ) -> AsyncGenerator[str, None]:
     """包装 openai SSE 流，在结束时记录 token 使用统计"""
     output_chars = 0
@@ -316,7 +336,7 @@ async def _tracking_stream(
                     pass
             yield line
     finally:
-        await _record_usage(account, input_chars, output_chars)
+        await _record_usage(account, input_chars, output_chars, client_key)
 
 
 def _request_input_chars(messages: list) -> int:
@@ -406,7 +426,7 @@ def get_model_item(model_id: str) -> Optional[Dict]:
 
 async def authenticate_client(
     auth: Optional[HTTPAuthorizationCredentials] = Depends(security),
-):
+) -> str:
     """客户端认证 (OpenAI-style)"""
     if not VALID_CLIENT_KEYS:
         raise HTTPException(status_code=503, detail="服务不可用: 未配置客户端 API 密钥")
@@ -421,11 +441,13 @@ async def authenticate_client(
     if auth.credentials not in VALID_CLIENT_KEYS:
         raise HTTPException(status_code=403, detail="无效的客户端 API 密钥")
 
+    return auth.credentials
+
 
 async def authenticate_any_client(
     auth: Optional[HTTPAuthorizationCredentials] = Depends(security),
     api_key: Optional[str] = Header(None, alias="x-api-key"),
-):
+) -> str:
     """客户端认证 (支持 OpenAI 和 Anthropic 风格)"""
     if not VALID_CLIENT_KEYS:
         raise HTTPException(status_code=503, detail="服务不可用: 未配置客户端 API 密钥")
@@ -433,7 +455,7 @@ async def authenticate_any_client(
     # 优先检查 x-api-key
     if api_key:
         if api_key in VALID_CLIENT_KEYS:
-            return
+            return api_key
         else:
             raise HTTPException(
                 status_code=403, detail="无效的客户端 API 密钥 (x-api-key)"
@@ -442,7 +464,7 @@ async def authenticate_any_client(
     # 其次检查 Authorization header
     if auth and auth.credentials:
         if auth.credentials in VALID_CLIENT_KEYS:
-            return
+            return auth.credentials
         else:
             raise HTTPException(
                 status_code=403, detail="无效的客户端 API 密钥 (Bearer token)"
@@ -458,7 +480,7 @@ async def authenticate_any_client(
 
 async def authenticate_anthropic_client(
     api_key: Optional[str] = Header(None, alias="x-api-key"),
-):
+) -> str:
     """客户端认证 (Anthropic-style)"""
     if not VALID_CLIENT_KEYS:
         raise HTTPException(status_code=503, detail="服务不可用: 未配置客户端 API 密钥")
@@ -471,6 +493,8 @@ async def authenticate_anthropic_client(
 
     if api_key not in VALID_CLIENT_KEYS:
         raise HTTPException(status_code=403, detail="无效的客户端 API 密钥")
+
+    return api_key
 
 
 async def _check_quota(account: dict):
@@ -666,7 +690,7 @@ async def reload_config():
 
 # API 端点
 @app.get("/v1/models", response_model=ModelList)
-async def list_models(_: None = Depends(authenticate_any_client)):
+async def list_models(_client_key: str = Depends(authenticate_any_client)):
     """列出可用模型"""
     model_list = [
         ModelInfo(
@@ -866,7 +890,7 @@ def extract_text_content(content: Optional[Union[str, List[Dict[str, Any]]]]) ->
 
 @app.post("/v1/chat/completions")
 async def chat_completions(
-    request: ChatCompletionRequest, _: None = Depends(authenticate_client)
+    request: ChatCompletionRequest, client_key: str = Depends(authenticate_client)
 ):
     """创建聊天完成"""
     model_config = get_model_item(request.model)
@@ -993,11 +1017,11 @@ async def chat_completions(
     # 返回流式或非流式响应
     if request.stream:
         return StreamingResponse(
-            _tracking_stream(openai_sse_stream, account, _input_chars),
+            _tracking_stream(openai_sse_stream, account, _input_chars, client_key),
             media_type="text/event-stream",
         )
     else:
-        tracked = _tracking_stream(openai_sse_stream, account, _input_chars)
+        tracked = _tracking_stream(openai_sse_stream, account, _input_chars, client_key)
         return await aggregate_stream_for_non_stream_response(tracked, request.model)
 
 
@@ -1237,7 +1261,7 @@ def convert_openai_to_anthropic_response(
 
 @app.post("/v1/messages", response_model=None)
 async def messages_completions(
-    request: AnthropicMessageRequest, _: None = Depends(authenticate_anthropic_client)
+    request: AnthropicMessageRequest, client_key: str = Depends(authenticate_anthropic_client)
 ):
     """创建符合 Anthropic 规范的聊天完成"""
     openai_request = convert_anthropic_to_openai(request)
@@ -1353,7 +1377,7 @@ async def messages_completions(
     openai_sse_stream = openai_stream_adapter(
         api_stream_generator(), openai_request.model, tools or []
     )
-    tracked_stream = _tracking_stream(openai_sse_stream, account, _input_chars)
+    tracked_stream = _tracking_stream(openai_sse_stream, account, _input_chars, client_key)
 
     if openai_request.stream:
         anthropic_stream = openai_to_anthropic_stream_adapter(

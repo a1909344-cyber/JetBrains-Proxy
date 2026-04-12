@@ -6,6 +6,7 @@ import {
   Cpu, 
   TerminalSquare, 
   Activity, 
+  BarChart2,
   Menu,
   Languages,
   LogOut,
@@ -32,6 +33,7 @@ export function Layout({ children, onLogout }: LayoutProps) {
     { key: "nav_models", href: "/models", icon: Cpu },
     { key: "nav_tester", href: "/test", icon: Activity },
     { key: "nav_logs", href: "/logs", icon: TerminalSquare },
+    { key: "nav_stats", href: "/stats", icon: BarChart2 },
   ] as const;
 
   const LangToggle = () => (
