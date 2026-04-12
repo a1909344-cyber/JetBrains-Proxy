@@ -10,6 +10,8 @@ services:
     dns:
       - 8.8.8.8
       - 8.8.4.4
+    # Write logs to the shared volume so the admin panel can read them
+    command: sh -c "python3 /app/main.py 2>&1 | tee /data/proxy.log"
     volumes:
       - proxy-data:/data
     healthcheck:

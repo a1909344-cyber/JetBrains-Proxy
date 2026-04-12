@@ -99,10 +99,14 @@ export default function Dashboard() {
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold" data-testid="text-status-code">
-              {status?.online ? (status?.proxyStatusCode || t("dash_running")) : t("dash_offline_val")}
+              {status?.online
+                ? (status?.proxyStatusCode === 200 ? (lang === "en" ? "OK" : "正常") : `HTTP ${status?.proxyStatusCode}`)
+                : t("dash_offline_val")}
             </div>
             <p className="text-xs text-muted-foreground mt-1 truncate" title={status?.proxyUrl}>
-              {status?.proxyUrl || 'N/A'}
+              {status?.online && status?.proxyStatusCode === 401
+                ? (lang === "en" ? "Running · no API key set" : "运行中 · 未配置 API Key")
+                : (status?.proxyUrl || "N/A")}
             </p>
           </CardContent>
         </Card>

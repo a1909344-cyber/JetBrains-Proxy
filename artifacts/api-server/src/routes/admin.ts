@@ -136,6 +136,7 @@ router.get("/admin/status", async (req, res) => {
   let online = false;
   let proxyStatusCode: number | null = null;
   let errorMsg: string | null = null;
+  let proxyModels: string[] = [];
 
   const modelsData = readJson("models.json") as Record<string, unknown> | null;
   const modelList = Array.isArray(modelsData?.models) ? (modelsData!.models as unknown[]) : [];
@@ -146,12 +147,27 @@ router.get("/admin/status", async (req, res) => {
   const keysData = readJson("client_api_keys.json");
   const keyCount = Array.isArray(keysData) ? keysData.length : 0;
 
+  // Use the first configured client API key so we get a real 200 response
+  // (without a key the proxy returns 401, making status misleading)
+  const firstKey = Array.isArray(keysData) && keysData.length > 0
+    ? (keysData[0] as Record<string, unknown>)?.key as string | undefined
+    : undefined;
+
   try {
+    const headers: Record<string, string> = {};
+    if (firstKey) headers["Authorization"] = `Bearer ${firstKey}`;
     const response = await fetch(`${PROXY_INTERNAL_URL}/v1/models`, {
+      headers,
       signal: AbortSignal.timeout(5000),
     });
     proxyStatusCode = response.status;
-    online = true;
+    online = response.ok || response.status === 401; // 401 means proxy is up but no key
+    if (response.ok) {
+      try {
+        const body = await response.json() as { data?: { id: string }[] };
+        proxyModels = (body.data ?? []).map((m: { id: string }) => m.id);
+      } catch { /* ignore parse errors */ }
+    }
   } catch (e: unknown) {
     errorMsg = e instanceof Error ? e.message : String(e);
   }
@@ -164,6 +180,8 @@ router.get("/admin/status", async (req, res) => {
     modelCount: modelList.length,
     accountCount,
     keyCount,
+    proxyModels,
+    hasClientKey: !!firstKey,
     dataDir: DATA_DIR,
   });
 });
