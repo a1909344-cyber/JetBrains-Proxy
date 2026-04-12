@@ -116,10 +116,19 @@ export default function Accounts() {
     try {
       const result = await testJwtRefresh(acc.licenseId, acc.authorization);
       const data = result.data as Record<string, unknown> | undefined;
-      const ok = result.ok && data?.state === "PAID" && !!data?.token;
-      const detail = ok
-        ? `Success — JWT received (state: ${data?.state})`
-        : `Failed (HTTP ${result.status}): ${data?.state ?? result.error ?? JSON.stringify(result.data)}`;
+      const state = data?.state as string | undefined;
+      const ok = result.ok && state === "PAID" && !!data?.token;
+
+      const stateHints: Record<string, string> = {
+        PAID: "Active paid license — JWT obtained successfully.",
+        TRIAL: "Trial license detected (state=TRIAL). The proxy only accepts PAID; trial accounts may not work.",
+        NONE: "No active license found (state=NONE). Possible causes: licenseId doesn't match the authorization token; the account has no JetBrains AI plan; or the authorization token is expired.",
+        EXPIRED: "License expired (state=EXPIRED). Renew the subscription.",
+      };
+
+      const raw = JSON.stringify(result.data, null, 2);
+      const hint = state ? (stateHints[state] ?? `Unknown state: ${state}`) : (result.error ?? "No response data");
+      const detail = ok ? `JWT obtained — state: ${state}` : `state=${state ?? "?"} — ${hint}\n\nFull response:\n${raw}`;
       setTestResults(prev => ({ ...prev, [index]: { ok, status: result.status, detail } }));
     } catch (e: any) {
       setTestResults(prev => ({ ...prev, [index]: { ok: false, status: 0, detail: e.message } }));
@@ -365,14 +374,25 @@ export default function Accounts() {
                     </div>
                   )}
 
-                  {testResult && (
-                    <div className={`mt-2 flex items-start gap-2 rounded-md px-3 py-2 text-xs border ${testResult.ok ? 'border-primary/30 bg-primary/5 text-primary' : 'border-destructive/30 bg-destructive/5 text-destructive'}`}>
-                      {testResult.ok
-                        ? <CheckCircle2 className="h-3.5 w-3.5 shrink-0 mt-0.5" />
-                        : <XCircle className="h-3.5 w-3.5 shrink-0 mt-0.5" />}
-                      <span className="break-all">{testResult.detail}</span>
-                    </div>
-                  )}
+                  {testResult && (() => {
+                    const [summary, ...rest] = testResult.detail.split('\n\nFull response:\n');
+                    const raw = rest.join('\n\nFull response:\n');
+                    return (
+                      <div className={`mt-2 rounded-md border text-xs overflow-hidden ${testResult.ok ? 'border-primary/30 bg-primary/5 text-primary' : 'border-destructive/30 bg-destructive/5 text-destructive'}`}>
+                        <div className="flex items-start gap-2 px-3 py-2">
+                          {testResult.ok
+                            ? <CheckCircle2 className="h-3.5 w-3.5 shrink-0 mt-0.5" />
+                            : <XCircle className="h-3.5 w-3.5 shrink-0 mt-0.5" />}
+                          <span className="break-words">{summary}</span>
+                        </div>
+                        {raw && (
+                          <pre className="border-t border-current/20 px-3 py-2 overflow-x-auto whitespace-pre-wrap break-all opacity-80 font-mono leading-relaxed">
+                            {raw}
+                          </pre>
+                        )}
+                      </div>
+                    );
+                  })()}
 
                   <div className="grid grid-cols-[120px_1fr] items-center gap-2 text-xs text-muted-foreground mt-3 border-t border-border pt-3">
                     <span className="flex items-center gap-1"><Clock className="h-3 w-3" /> Last Used:</span>
