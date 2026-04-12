@@ -192,10 +192,13 @@ export default function Accounts() {
             </DialogHeader>
             <form onSubmit={handleSave} className="space-y-4 py-2">
 
-              <div className="rounded-md border border-border bg-muted/30 p-4 space-y-3">
-                <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Mode A — Static JWT</p>
+              <div className="rounded-md border-2 border-primary/40 bg-primary/5 p-4 space-y-3">
+                <div className="flex items-center gap-2">
+                  <span className="text-xs font-semibold text-primary uppercase tracking-wider">Mode A — Static JWT</span>
+                  <span className="text-xs bg-primary/20 text-primary px-1.5 py-0.5 rounded font-medium">推荐 / Recommended</span>
+                </div>
                 <div className="space-y-1.5">
-                  <Label htmlFor="jwt">JWT Token</Label>
+                  <Label htmlFor="jwt">JWT Token (<code className="text-primary bg-primary/10 px-1 rounded text-xs">grazie-authenticate-jwt</code>)</Label>
                   <Input 
                     id="jwt" 
                     placeholder="eyJhbGci..." 
@@ -204,7 +207,11 @@ export default function Accounts() {
                     data-testid="input-jwt"
                     className="font-mono text-xs"
                   />
-                  <p className="text-xs text-muted-foreground">Paste the raw JWT from your JetBrains IDE session. Expires periodically.</p>
+                  <div className="text-xs text-muted-foreground space-y-1 pt-0.5">
+                    <p>抓包时找 <strong>任意一条</strong> 发往 <code className="bg-muted px-1 rounded">api.jetbrains.ai</code> 的请求，复制请求头</p>
+                    <p><code className="bg-muted px-1 rounded font-mono">grazie-authenticate-jwt: eyJ...</code> 的值粘贴到这里。</p>
+                    <p className="text-amber-500/80">⚠ JWT 会定期过期（通常数小时），过期后需手动更新。</p>
+                  </div>
                 </div>
               </div>
 
@@ -213,12 +220,17 @@ export default function Accounts() {
                   <span className="w-full border-t border-muted-foreground/20" />
                 </div>
                 <div className="relative flex justify-center text-xs uppercase">
-                  <span className="bg-background px-2 text-muted-foreground">OR</span>
+                  <span className="bg-background px-2 text-muted-foreground">OR (高级 / Advanced)</span>
                 </div>
               </div>
 
               <div className="rounded-md border border-border bg-muted/30 p-4 space-y-3">
-                <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Mode B — License (auto-refreshes JWT)</p>
+                <div className="flex items-center gap-2">
+                  <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Mode B — License (自动刷新 JWT)</span>
+                </div>
+                <p className="text-xs text-amber-500/80">
+                  ⚠ 需要抓包到 <code className="bg-muted px-1 rounded">POST /auth/jetbrains-jwt/provide-access/license/v2</code> 的请求才能获取正确凭证。如果测试返回 <code className="bg-muted px-1 rounded">state=NONE</code>，请改用 Mode A。
+                </p>
                 <div className="space-y-1.5">
                   <Label htmlFor="licenseId">License ID</Label>
                   <Input 
@@ -229,20 +241,20 @@ export default function Accounts() {
                     data-testid="input-license"
                     className="font-mono"
                   />
+                  <p className="text-xs text-muted-foreground">来自 <code className="bg-muted px-1 rounded">/provide-access/license/v2</code> 请求体中的 <code className="bg-muted px-1 rounded">licenseId</code> 字段</p>
                 </div>
                 <div className="space-y-1.5">
                   <Label htmlFor="authorization">Authorization Token</Label>
                   <Input 
                     id="authorization" 
-                    placeholder="eyJhbGci... (raw token, do NOT include 'Bearer ')"
+                    placeholder="eyJhbGci... (不含 Bearer 前缀)"
                     value={formData.authorization || ''} 
                     onChange={e => setFormData({...formData, authorization: e.target.value})}
                     data-testid="input-auth"
                     className="font-mono text-xs"
                   />
                   <p className="text-xs text-muted-foreground">
-                    Raw token only — do <strong>not</strong> include the <code className="bg-muted px-1 rounded">Bearer </code> prefix.
-                    Found in your JetBrains IDE credential store.
+                    同一请求中 <code className="bg-muted px-1 rounded">Authorization: Bearer xxx</code> 的值，<strong>不要</strong>包含 <code className="bg-muted px-1 rounded">Bearer </code> 前缀。
                   </p>
                 </div>
               </div>
