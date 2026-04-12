@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useRef } from "react";
 import { useGetJetbrainsAccounts, usePutJetbrainsAccounts, getGetJetbrainsAccountsQueryKey } from "@workspace/api-client-react";
 import { useQueryClient, useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
@@ -9,7 +9,7 @@ import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter, DialogClose } from "@/components/ui/dialog";
 import { useToast } from "@/hooks/use-toast";
-import { Trash2, Edit, Plus, CheckCircle2, XCircle, Clock, Power, FlaskConical, Loader2, ChevronDown, ChevronUp, BarChart2, RotateCcw, Zap, BookOpen, Copy, Check, LogIn, ExternalLink, KeyRound, Eye, EyeOff } from "lucide-react";
+import { Trash2, Edit, Plus, CheckCircle2, XCircle, Clock, Power, FlaskConical, Loader2, ChevronDown, ChevronUp, BarChart2, RotateCcw, Zap, BookOpen, Copy, Check, LogIn, ExternalLink, KeyRound, Eye, EyeOff, Download, Upload } from "lucide-react";
 import { JetbrainsAccount } from "@workspace/api-client-react/src/generated/api.schemas";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useLang } from "@/lib/i18n";
@@ -83,6 +83,7 @@ export default function Accounts() {
   const queryClient = useQueryClient();
   const { toast } = useToast();
   const { t, lang } = useLang();
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const { data: accounts, isLoading } = useGetJetbrainsAccounts();
   const putAccounts = usePutJetbrainsAccounts();
@@ -95,6 +96,73 @@ export default function Accounts() {
     },
     refetchInterval: 10000,
   });
+
+  const handleExport = () => {
+    if (!accounts) return;
+    const json = JSON.stringify(accounts, null, 2);
+    const blob = new Blob([json], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    const date = new Date().toISOString().slice(0, 10);
+    a.href = url;
+    a.download = `jetbrainsai-accounts-${date}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+    toast({ title: lang === "en" ? `Exported ${(accounts as ExtendedAccount[]).length} accounts` : `已导出 ${(accounts as ExtendedAccount[]).length} 个账号` });
+  };
+
+  const handleImportFile = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    e.target.value = "";
+    const reader = new FileReader();
+    reader.onload = (evt) => {
+      try {
+        const parsed = JSON.parse(evt.target?.result as string);
+        const incoming: ExtendedAccount[] = Array.isArray(parsed) ? parsed : [];
+        if (incoming.length === 0) {
+          toast({ title: t("acc_import_err_empty"), variant: "destructive" });
+          return;
+        }
+        const current: ExtendedAccount[] = (accounts as ExtendedAccount[]) ?? [];
+        let added = 0;
+        let updated = 0;
+        const merged = [...current];
+        for (const acc of incoming) {
+          const dedupKey = (acc.licenseId || (acc as any).email || "").trim();
+          const existIdx = dedupKey
+            ? merged.findIndex(a =>
+                (a.licenseId && a.licenseId === dedupKey) ||
+                ((a as any).email && (a as any).email === dedupKey)
+              )
+            : -1;
+          if (existIdx !== -1) {
+            merged[existIdx] = { ...merged[existIdx], ...acc };
+            updated++;
+          } else {
+            merged.push(acc);
+            added++;
+          }
+        }
+        putAccounts.mutate({ data: merged }, {
+          onSuccess: () => {
+            queryClient.invalidateQueries({ queryKey: getGetJetbrainsAccountsQueryKey() });
+            toast({
+              title: t("acc_import_merged")
+                .replace("{added}", String(added))
+                .replace("{updated}", String(updated)),
+            });
+          },
+          onError: (err: any) => {
+            toast({ title: t("acc_error"), description: err.message, variant: "destructive" });
+          },
+        });
+      } catch {
+        toast({ title: t("acc_import_err_format"), variant: "destructive" });
+      }
+    };
+    reader.readAsText(file);
+  };
 
   const [resettingStats, setResettingStats] = useState(false);
   const handleResetStats = async () => {
@@ -444,7 +512,39 @@ export default function Accounts() {
           <p className="text-muted-foreground mt-2">{t("acc_desc")}</p>
         </div>
 
-        <div className="flex gap-2 items-center">
+        <div className="flex gap-2 items-center flex-wrap justify-end">
+          {/* Hidden file input for import */}
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept=".json,application/json"
+            className="hidden"
+            onChange={handleImportFile}
+          />
+
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => fileInputRef.current?.click()}
+            title={t("acc_import")}
+            data-testid="btn-import-accounts"
+          >
+            <Upload className="mr-2 h-4 w-4" />
+            {t("acc_import")}
+          </Button>
+
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={handleExport}
+            disabled={!accounts || (accounts as ExtendedAccount[]).length === 0}
+            title={t("acc_export")}
+            data-testid="btn-export-accounts"
+          >
+            <Download className="mr-2 h-4 w-4" />
+            {t("acc_export")}
+          </Button>
+
           <Button
             variant="outline"
             size="sm"
