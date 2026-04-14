@@ -83,6 +83,9 @@ export default function Login({ onLogin }: LoginProps) {
             <Button type="submit" className="w-full" disabled={loading || !password}>
               {loading ? t("login_submitting") : t("login_submit")}
             </Button>
+            <p className="text-xs text-center text-muted-foreground pt-1">
+              {t("login_default_hint")}
+            </p>
           </form>
         </CardContent>
       </Card>
