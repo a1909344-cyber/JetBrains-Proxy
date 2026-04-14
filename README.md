@@ -2,8 +2,6 @@
 
 OpenAI / Anthropic 兼容的 JetBrains AI 反向代理，带 Web 管理面板。
 
-> **此分支（`vps`）为 VPS 独立部署版本**，已移除 Replit 相关配置。
-
 ## 功能
 
 - **OpenAI 兼容接口** `POST /v1/chat/completions` / `GET /v1/models`
@@ -24,8 +22,8 @@ curl -fsSL https://get.docker.com | sh
 ### 步骤
 
 ```bash
-git clone -b vps https://github.com/ydddp/JetBrains-UI.git
-cd JetBrains-UI
+git clone https://github.com/ydddp/JetBrains-Proxy.git
+cd JetBrains-Proxy
 cp .env.example .env
 nano .env          # 至少设置 ADMIN_PASSWORD
 docker compose up -d
@@ -64,18 +62,18 @@ docker compose up -d
 
 ## 数据备份
 
-数据存储在 Docker volume `JetBrains-UI_proxy-data`：
+数据存储在 Docker volume `JetBrains-Proxy_proxy-data`：
 
 ```bash
 # 备份
 docker run --rm \
-  -v JetBrains-UI_proxy-data:/data \
+  -v JetBrains-Proxy_proxy-data:/data \
   -v $(pwd):/backup \
   alpine tar czf /backup/proxy-data-$(date +%F).tar.gz -C /data .
 
 # 恢复
 docker run --rm \
-  -v JetBrains-UI_proxy-data:/data \
+  -v JetBrains-Proxy_proxy-data:/data \
   -v $(pwd):/backup \
   alpine tar xzf /backup/proxy-data-YYYY-MM-DD.tar.gz -C /data
 ```
@@ -83,7 +81,7 @@ docker run --rm \
 ## 更新
 
 ```bash
-git pull origin vps
+git pull origin main
 docker compose build --no-cache
 docker compose up -d
 ```
