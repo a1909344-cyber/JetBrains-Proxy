@@ -540,8 +540,11 @@ async def _check_quota(account: dict):
 
     except Exception as e:
         print(f"Error checking quota for account: {e}")
-        # On error, assume it has no quota to be safe
-        account["has_quota"] = False
+        # On transient error (network, timeout, etc.) keep the previous quota state
+        # so a single failed check doesn't disable a working account.
+        # Only mark as False if we've never successfully checked before.
+        if "has_quota" not in account:
+            account["has_quota"] = True  # optimistic default on first failure
     finally:
         account["last_quota_check"] = time.time()
         await _save_accounts_to_file()
@@ -632,10 +635,13 @@ async def get_next_jetbrains_account() -> dict:
                 continue
 
             # 如果状态是 stale，检查配额
-            is_quota_stale = (
-                time.time() - account.get("last_quota_check", 0) > 3600
-            )  # 1 hour cache
-            if account.get("has_quota") and is_quota_stale:
+            # - has_quota=True: recheck every 1 hour
+            # - has_quota=False: recheck every 10 minutes (transient errors should recover)
+            last_check = account.get("last_quota_check", 0)
+            elapsed = time.time() - last_check
+            recheck_interval = 3600 if account.get("has_quota", True) else 600
+            is_quota_stale = elapsed > recheck_interval
+            if is_quota_stale:
                 await _check_quota(account)
 
             if account.get("has_quota"):
