@@ -15,6 +15,7 @@ import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 import { useState } from "react";
 import { useLang } from "@/lib/i18n";
+import { ChangePasswordDialog } from "@/components/change-password-dialog";
 
 interface LayoutProps {
   children: React.ReactNode;
@@ -101,6 +102,7 @@ export function Layout({ children, onLogout }: LayoutProps) {
         </nav>
         <div className="border-t border-sidebar-border pt-3 mt-3">
           <LangToggle />
+          <ChangePasswordDialog onLogout={onLogout} />
           <LogoutButton />
         </div>
       </aside>
@@ -126,6 +128,7 @@ export function Layout({ children, onLogout }: LayoutProps) {
               <NavLinks />
               <div className="border-t border-sidebar-border pt-3 mt-3">
                 <LangToggle />
+                <ChangePasswordDialog onLogout={onLogout} />
                 <LogoutButton />
               </div>
             </SheetContent>
