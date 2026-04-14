@@ -39,7 +39,7 @@ services:
       NODE_ENV: production
       # SESSION_SECRET is optional — auto-generated and persisted to the volume on first run
       SESSION_SECRET: ${SESSION_SECRET:-}
-      ADMIN_PASSWORD: ${ADMIN_PASSWORD:?ADMIN_PASSWORD is required}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-}
       DATA_DIR: /data
       LOG_FILE: /data/proxy.log
       PROXY_INTERNAL_URL: http://proxy:8000
