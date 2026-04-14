@@ -111,18 +111,18 @@ function writeJson(filename: string, data: unknown): void {
 // ── Network connectivity diagnostic ──────────────────────────────────────────
 router.get("/admin/network-test", async (_req, res) => {
   const targets = [
-    { name: "JetBrains Account", url: "https://account.jetbrains.com" },
-    // Use an actual API endpoint — root returns 404, quota endpoint returns 401 (reachable)
-    { name: "JetBrains AI", url: "https://api.jetbrains.ai/user/v5/quota/get" },
-    { name: "Google DNS check", url: "https://dns.google" },
+    { name: "JetBrains Account", url: "https://account.jetbrains.com", method: "GET" },
+    // quota/get is a POST endpoint; no auth token → 401, which confirms reachability
+    { name: "JetBrains AI", url: "https://api.jetbrains.ai/user/v5/quota/get", method: "POST" },
+    { name: "Google DNS check", url: "https://dns.google", method: "GET" },
   ];
 
   const results = await Promise.all(
-    targets.map(async ({ name, url }) => {
+    targets.map(async ({ name, url, method }) => {
       const start = Date.now();
       try {
-        // Use GET — some servers reject HEAD (405). Any status < 500 means reachable.
-        const r = await fetch(url, { signal: AbortSignal.timeout(8000), method: "GET" });
+        const r = await fetch(url, { signal: AbortSignal.timeout(8000), method });
+        // Any status < 500 means the server is reachable (401 = no token, both are fine)
         const ok = r.status < 500;
         return { name, url, ok, status: r.status, ms: Date.now() - start };
       } catch (e: unknown) {
