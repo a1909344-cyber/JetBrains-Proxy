@@ -112,7 +112,8 @@ function writeJson(filename: string, data: unknown): void {
 router.get("/admin/network-test", async (_req, res) => {
   const targets = [
     { name: "JetBrains Account", url: "https://account.jetbrains.com" },
-    { name: "JetBrains AI", url: "https://api.jetbrains.ai" },
+    // Use an actual API endpoint — root returns 404, quota endpoint returns 401 (reachable)
+    { name: "JetBrains AI", url: "https://api.jetbrains.ai/user/v5/quota/get" },
     { name: "Google DNS check", url: "https://dns.google" },
   ];
 
@@ -121,7 +122,9 @@ router.get("/admin/network-test", async (_req, res) => {
       const start = Date.now();
       try {
         const r = await fetch(url, { signal: AbortSignal.timeout(8000), method: "HEAD" });
-        return { name, url, ok: true, status: r.status, ms: Date.now() - start };
+        // Any response below 500 means the server is reachable (401 = no token, 404 = wrong path, both reachable)
+        const ok = r.status < 500;
+        return { name, url, ok, status: r.status, ms: Date.now() - start };
       } catch (e: unknown) {
         return { name, url, ok: false, error: e instanceof Error ? e.message : String(e), ms: Date.now() - start };
       }
