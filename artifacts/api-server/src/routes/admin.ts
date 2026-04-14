@@ -121,8 +121,8 @@ router.get("/admin/network-test", async (_req, res) => {
     targets.map(async ({ name, url }) => {
       const start = Date.now();
       try {
-        const r = await fetch(url, { signal: AbortSignal.timeout(8000), method: "HEAD" });
-        // Any response below 500 means the server is reachable (401 = no token, 404 = wrong path, both reachable)
+        // Use GET — some servers reject HEAD (405). Any status < 500 means reachable.
+        const r = await fetch(url, { signal: AbortSignal.timeout(8000), method: "GET" });
         const ok = r.status < 500;
         return { name, url, ok, status: r.status, ms: Date.now() - start };
       } catch (e: unknown) {
