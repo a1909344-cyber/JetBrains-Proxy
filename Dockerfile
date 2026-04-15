@@ -51,17 +51,15 @@ RUN rm -f /etc/nginx/sites-enabled/default
 # ── Supervisord config ────────────────────────────────────────────────────────
 COPY docker/supervisord.conf /etc/supervisor/conf.d/supervisord.conf
 
+# ── Entrypoint: adjusts nginx listen port to match $PORT injected by PaaS ─────
+COPY docker/entrypoint.sh /entrypoint.sh
+RUN chmod +x /entrypoint.sh
+
 # Data directory for persistent files
 RUN mkdir -p /data
 
-# Default environment variables for api-server
-# ADMIN_PASSWORD must be provided by the deployment platform (e.g. Zeabur)
-ENV PORT=8080 \
-    NODE_ENV=production \
-    DATA_DIR=/data \
-    LOG_FILE=/data/proxy.log \
-    PROXY_INTERNAL_URL=http://127.0.0.1:8000
-
+# Expose port 80 as default; PaaS platforms (Zeabur) override via $PORT env var
+# which entrypoint.sh reads and writes into nginx config at startup.
 EXPOSE 80
 
-CMD ["/usr/bin/supervisord", "-c", "/etc/supervisor/conf.d/supervisord.conf"]
+ENTRYPOINT ["/entrypoint.sh"]
